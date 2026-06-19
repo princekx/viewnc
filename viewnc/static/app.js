@@ -19,6 +19,21 @@ const _coastlineCache = {};
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
+function getPlotHeight() {
+  const el = $('plotly-div');
+  if (!el) return 520;
+  const top = el.getBoundingClientRect().top;
+  return Math.max(320, Math.floor(window.innerHeight - top - 18));
+}
+
+function setPlotMode(enabled) {
+  $('cube-info').classList.toggle('hidden', enabled);
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
 // ── Utility ──────────────────────────────────────────────────────────────────
 function showLoading(msg = 'Loading…') {
   $('loading-msg').textContent = msg;
@@ -286,7 +301,14 @@ async function render2D(data, meta, plotType, colormap) {
       y: yVals,
       z: data,
       colorscale: colormap,
-      colorbar: { title: { text: cube.units, side: 'right' }, thickness: 16 },
+      colorbar: {
+        title: { text: cube.units, side: 'right' },
+        thickness: 16,
+        lenmode: 'fraction',
+        len: 1,
+        y: 0.5,
+        yanchor: 'middle',
+      },
       contours: { coloring: 'heatmap', showlabels: true, labelfont: { size: 9 } },
       line: { smoothing: 0.85 },
       hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
@@ -309,7 +331,14 @@ async function render2D(data, meta, plotType, colormap) {
       y: yVals,
       z: data,
       colorscale: colormap,
-      colorbar: { title: { text: cube.units, side: 'right' }, thickness: 16 },
+      colorbar: {
+        title: { text: cube.units, side: 'right' },
+        thickness: 16,
+        lenmode: 'fraction',
+        len: 1,
+        y: 0.5,
+        yanchor: 'middle',
+      },
       hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
     }];
   }
@@ -383,6 +412,7 @@ async function render2D(data, meta, plotType, colormap) {
     },
     margin: { t: 50, b: 60, l: 70, r: 80 },
     autosize: true,
+    height: getPlotHeight(),
   };
 
   const config = {
@@ -392,11 +422,17 @@ async function render2D(data, meta, plotType, colormap) {
     toImageButtonOptions: { format: 'png', filename: cube.name, scale: 2 },
   };
 
-  Plotly.newPlot('plotly-div', traces, layout, config);
-
   $('plot-title-bar').textContent = `${cube.name}  —  shape: (${meta.shape.join(', ')})`;
   $('welcome-screen').classList.add('hidden');
+  setPlotMode(true);
   $('plot-area').classList.remove('hidden');
+
+  // Plotly needs a visible container on first render to size axes/colorbar correctly.
+  await nextFrame();
+  Plotly.newPlot('plotly-div', traces, layout, config);
+  await nextFrame();
+  Plotly.relayout('plotly-div', { height: getPlotHeight() });
+  Plotly.Plots.resize('plotly-div');
 }
 
 async function plotTimeSeries(idx) {
@@ -428,12 +464,19 @@ async function plotTimeSeries(idx) {
       yaxis: { title: { text: result.units, font: { color: '#8b93a8' } }, gridcolor: 'rgba(255,255,255,0.05)' },
       margin: { t: 50, b: 100, l: 70, r: 30 },
       autosize: true,
+      height: getPlotHeight(),
     };
 
-    Plotly.newPlot('plotly-div', traces, layout, { responsive: true, displaylogo: false });
     $('plot-title-bar').textContent = `${result.name} — time series`;
+    setPlotMode(true);
     $('plot-area').classList.remove('hidden');
     $('welcome-screen').classList.add('hidden');
+
+    await nextFrame();
+    Plotly.newPlot('plotly-div', traces, layout, { responsive: true, displaylogo: false });
+    await nextFrame();
+    Plotly.relayout('plotly-div', { height: getPlotHeight() });
+    Plotly.Plots.resize('plotly-div');
   } catch (err) {
     alert('Time series error: ' + err.message);
   } finally {
@@ -483,8 +526,20 @@ function closeModal(e) {
 }
 
 // ── Plot utilities ────────────────────────────────────────────────────────────
-function closePlot() { $('plot-area').classList.add('hidden'); }
+function closePlot() {
+  $('plot-area').classList.add('hidden');
+  setPlotMode(false);
+}
 function downloadPlot() { Plotly.downloadImage('plotly-div', { format: 'png', scale: 2, filename: 'viewnc_plot' }); }
+
+window.addEventListener('resize', () => {
+  if ($('plot-area').classList.contains('hidden')) return;
+  try {
+    Plotly.relayout('plotly-div', { height: getPlotHeight() });
+  } catch (_) {
+    // Ignore during rapid resize before plot initialization.
+  }
+});
 
 function linspace(start, stop, num) {
   if (num <= 1) return [start];
