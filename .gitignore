@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.tox/
+.venv/
+venv/
+env/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (don't commit large climate data)
+*.nc
+*.pp
+*.grb
+*.grib
+*.grib2
+*.grb2
+
+# But DO track docs assets (screenshots etc.)
+!docs/
+!docs/**
+
+# Logs / temp
+*.log
+*.tmp
+/tmp/
+
+# Flask / coverage
+instance/
+.coverage
+htmlcov/

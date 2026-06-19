@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>viewnc – Iris Data Viewer</title>
+  <meta name="description" content="Interactive viewer for NetCDF, PP and GRIB files using Python iris." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Plotly for interactive plots -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ░░ HEADER ░░ -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🌍</span>
+      <span class="logo-text">viewnc</span>
+      <span class="logo-sub">iris data viewer</span>
+    </div>
+    <div class="header-actions">
+      <span id="status-badge" class="badge badge-idle">No file loaded</span>
+    </div>
+  </div>
+</header>
+
+<!-- ░░ MAIN LAYOUT ░░ -->
+<div class="layout">
+
+  <!-- ── LEFT SIDEBAR ── -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- File loader -->
+    <section class="panel" id="panel-file">
+      <div class="panel-header">
+        <span class="panel-icon">📂</span>
+        <h2 class="panel-title">Open File</h2>
+      </div>
+      <div class="panel-body">
+        <div class="input-row">
+          <input type="text" id="filepath-input" class="filepath-input"
+                 placeholder="/path/to/data.nc" autocomplete="off" spellcheck="false" />
+          <button id="browse-btn" class="btn btn-ghost btn-icon" onclick="openBrowser()" title="Browse filesystem">📁</button>
+          <button id="load-btn" class="btn btn-primary" onclick="loadFile()">Load</button>
+        </div>
+        <p class="hint">Supports <strong>.nc</strong>, <strong>.pp</strong>, <strong>.grb</strong>/<strong>.grib2</strong></p>
+        <div id="load-error" class="alert alert-error hidden"></div>
+      </div>
+    </section>
+
+    <!-- Variable list -->
+    <section class="panel" id="panel-vars">
+      <div class="panel-header">
+        <span class="panel-icon">📦</span>
+        <h2 class="panel-title">Variables</h2>
+        <span id="var-count" class="badge badge-dim">0</span>
+      </div>
+      <div class="panel-body">
+        <div id="var-list" class="var-list">
+          <p class="empty-msg">Load a file to see variables</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dimension sliders -->
+    <section class="panel" id="panel-dims" style="display:none">
+      <div class="panel-header">
+        <span class="panel-icon">🎛️</span>
+        <h2 class="panel-title">Dimension Selectors</h2>
+      </div>
+      <div class="panel-body" id="dim-sliders"></div>
+    </section>
+
+    <!-- Plot type -->
+    <section class="panel" id="panel-plot">
+      <div class="panel-header">
+        <span class="panel-icon">📈</span>
+        <h2 class="panel-title">Plot Type</h2>
+      </div>
+      <div class="panel-body">
+        <div class="radio-group" id="plot-type-group">
+          <label class="radio-label">
+            <input type="radio" name="plot-type" value="heatmap" checked id="radio-heatmap" />
+            <span class="radio-custom"></span>
+            Heatmap (2D)
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="plot-type" value="contour" id="radio-contour" />
+            <span class="radio-custom"></span>
+            Contour (2D)
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="plot-type" value="timeseries" id="radio-timeseries" />
+            <span class="radio-custom"></span>
+            Time Series
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="plot-type" value="line" id="radio-line" />
+            <span class="radio-custom"></span>
+            Line / Profile
+          </label>
+        </div>
+        <div class="colormap-row" id="colormap-row">
+          <label class="field-label">Colormap</label>
+          <select id="colormap-select" class="select">
+            <option value="RdBu_r">RdBu_r</option>
+            <option value="Viridis">Viridis</option>
+            <option value="Plasma">Plasma</option>
+            <option value="Inferno">Inferno</option>
+            <option value="YlOrRd">YlOrRd</option>
+            <option value="Blues">Blues</option>
+            <option value="Greens">Greens</option>
+            <option value="Greys">Greys</option>
+            <option value="Hot">Hot</option>
+            <option value="Jet">Jet</option>
+          </select>
+        </div>
+
+        <!-- Coastlines toggle -->
+        <div class="option-row" id="coastline-row">
+          <!-- Hidden checkbox is a direct sibling of .coastline-options so CSS ~ works -->
+          <input type="checkbox" id="coastline-toggle" class="toggle-input" />
+          <div class="option-row-top">
+            <label class="toggle-label" for="coastline-toggle">
+              <span class="toggle-icon">🗺</span>
+              Coastlines
+            </label>
+            <!-- toggle-track is also a label so clicking the pill works -->
+            <label for="coastline-toggle" class="toggle-track">
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
+          <div class="coastline-options" id="coastline-options">
+            <label class="field-label">Resolution</label>
+            <select id="coastline-res" class="select select-sm">
+              <option value="110m" selected>110m (fast)</option>
+              <option value="50m">50m (medium)</option>
+              <option value="10m">10m (fine)</option>
+            </select>
+            <label class="field-label" style="margin-top:6px">Line colour</label>
+            <select id="coastline-color" class="select select-sm">
+              <option value="rgba(0,0,0,0.9)" selected>Black (default)</option>
+              <option value="rgba(255,255,255,0.9)">White</option>
+              <option value="rgba(220,220,220,0.8)">Light grey</option>
+              <option value="rgba(40,40,40,0.85)">Dark grey</option>
+              <option value="rgba(255,220,80,0.9)">Gold</option>
+              <option value="rgba(255,80,80,0.9)">Red</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="plot-btn" class="btn btn-accent btn-full" onclick="plotData()" disabled>
+          Plot
+        </button>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="content">
+
+    <!-- Welcome state -->
+    <div id="welcome-screen" class="welcome">
+      <div class="welcome-icon">🌐</div>
+      <h1 class="welcome-title">viewnc</h1>
+      <p class="welcome-sub">Interactive viewer for NetCDF · PP · GRIB files</p>
+      <ul class="welcome-features">
+        <li>⚡ Fast iris-powered loading</li>
+        <li>🗺️ Interactive 2D heatmaps &amp; contours</li>
+        <li>📉 Time-series exploration</li>
+        <li>🎛️ Dimension range sliders</li>
+        <li>🔍 Zoom, pan and hover via Plotly</li>
+      </ul>
+    </div>
+
+    <!-- Cube info cards -->
+    <div id="cube-info" class="cube-info hidden">
+      <div id="cube-cards" class="cube-cards"></div>
+    </div>
+
+    <!-- Plot area -->
+    <div id="plot-area" class="plot-area hidden">
+      <div class="plot-toolbar">
+        <div id="plot-title-bar" class="plot-title-bar"></div>
+        <div class="plot-toolbar-actions">
+          <button class="btn btn-ghost btn-sm" onclick="downloadPlot()">⬇ PNG</button>
+          <button class="btn btn-ghost btn-sm" onclick="closePlot()">✕ Close</button>
+        </div>
+      </div>
+      <div id="plotly-div" class="plotly-container"></div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="spinner"></div>
+      <p id="loading-msg">Loading…</p>
+    </div>
+
+  </main>
+</div>
+
+<!-- ░░ VARIABLE DETAIL MODAL ░░ -->
+<div id="var-modal" class="modal-backdrop hidden" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modal-title">Variable Details</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ░░ FILE BROWSER MODAL ░░ -->
+<div id="browser-modal" class="modal-backdrop hidden" onclick="closeBrowser(event)">
+  <div class="modal browser-modal" onclick="event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="modal-header">
+      <h3>📁 Open File</h3>
+      <div class="browser-header-actions">
+        <button class="btn btn-ghost btn-sm" onclick="browserNav(null)" title="Go Home">⌂ Home</button>
+        <button class="modal-close" onclick="closeBrowser()">✕</button>
+      </div>
+    </div>
+
+    <!-- Breadcrumbs -->
+    <div class="browser-breadcrumbs" id="browser-breadcrumbs"></div>
+
+    <!-- Search bar -->
+    <div class="browser-search-row">
+      <input type="text" id="browser-search" class="browser-search"
+             placeholder="Filter files…" oninput="filterBrowserFiles()" autocomplete="off" />
+      <span id="browser-path-display" class="browser-path-display"></span>
+    </div>
+
+    <!-- Content: dirs left, files right -->
+    <div class="browser-content" id="browser-content">
+      <div class="browser-dirs" id="browser-dirs"></div>
+      <div class="browser-files" id="browser-files"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="browser-footer">
+      <span id="browser-status" class="browser-status"></span>
+      <div class="browser-footer-actions">
+        <button class="btn btn-ghost btn-sm" onclick="closeBrowser()">Cancel</button>
+        <button id="browser-select-btn" class="btn btn-primary btn-sm" onclick="browserSelectFile()" disabled>
+          Open
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
