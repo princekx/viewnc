@@ -137,8 +137,36 @@ function selectVar(idx) {
   document.querySelectorAll('.var-item').forEach(el => el.classList.remove('selected'));
   $(`var-item-${idx}`)?.classList.add('selected');
 
-  buildDimSliders(STATE.cubes[idx]);
+  // Find cube by its .index property (not list position)
+  const cube = STATE.cubes.find(c => c.index === idx) ?? STATE.cubes[idx];
+  buildDimSliders(cube);
+  renderCubeShapeInfo(cube);
   $('plot-btn').disabled = false;
+
+  // Auto-enable coastlines when the plot axes look geographic
+  autoSetCoastline(cube);
+}
+
+/**
+ * Enable the coastline toggle when the cube's spatial axes (last 2 dim_coords)
+ * look like longitude and latitude.
+ */
+function autoSetCoastline(cube) {
+  const toggle = $('coastline-toggle');
+  if (!toggle) return;
+  const dims = cube.dim_coords;
+  // Spatial axes are always the last two dim_coords
+  const xCoord = dims[dims.length - 1];
+  const yCoord = dims[dims.length - 2];
+  if (!xCoord || !yCoord) return;
+
+  const lonRe = /lon|degree.*east|x/i;
+  const latRe = /lat|degree.*north|y/i;
+  const xSig = (xCoord.name || '') + ' ' + (xCoord.units || '') + ' ' + (xCoord.standard_name || '');
+  const ySig = (yCoord.name || '') + ' ' + (yCoord.units || '') + ' ' + (yCoord.standard_name || '');
+
+  const isGeo = lonRe.test(xSig) && latRe.test(ySig);
+  toggle.checked = isGeo;
 }
 
 // ── Cube Info Cards ───────────────────────────────────────────────────────────
@@ -166,17 +194,124 @@ function renderCubeCards() {
   });
 }
 
-// ── Dimension Sliders ─────────────────────────────────────────────────────────
+// ── Cube Shape Info ──────────────────────────────────────────────────────
+function renderCubeShapeInfo(cube) {
+  const panel = $('panel-cube-shape');
+  if (!panel) return;
+  const container = $('cube-shape-info');
+  panel.style.display = '';
+
+  const coordNames = cube.dim_coords.map(c => c.name);
+  const dimTags = cube.shape.map((s, i) =>
+    `<span class="dim-tag">${coordNames[i] || 'dim' + i}: <strong>${s}</strong></span>`
+  ).join('');
+
+  const ndim = cube.ndim;
+  const hasExtra = ndim > 2;
+  const plotAxes = coordNames.slice(-2).join(' \u00d7 ') || 'all dims';
+  const spatialShape = cube.shape.slice(-2).join(' \u00d7 ');
+  const collapsedAxes = hasExtra ? coordNames.slice(0, -2).join(', ') : null;
+
+  container.innerHTML = `
+    <div class="cube-shape-row">
+      <span class="cube-shape-label">Shape</span>
+      <span class="cube-shape-val mono">(${cube.shape.join(' \u00d7 ')})</span>
+    </div>
+    <div class="cube-shape-row">
+      <span class="cube-shape-label">Dims</span>
+      <div class="dim-tags">${dimTags}</div>
+    </div>
+    <div class="cube-shape-row">
+      <span class="cube-shape-label">Plot axes</span>
+      <span class="cube-shape-val" style="color:var(--accent-green)">${plotAxes} &nbsp;<span class="mono" style="font-size:0.65rem;color:var(--text-muted)">(${spatialShape})</span></span>
+    </div>
+    ${hasExtra ? `<div class="cube-shape-row">
+      <span class="cube-shape-label">Collapse</span>
+      <span class="cube-shape-val" style="color:var(--accent-orange)">${collapsedAxes}</span>
+    </div>` : ''}
+    <div id="selection-summary"></div>
+  `;
+
+  const badge = $('dims-plot-shape');
+  if (badge) badge.textContent = cube.shape.join('\u00d7');
+}
+
+/**
+ * Refresh the live "Current Selection" block inside the Cube Dimensions panel.
+ * Called every time a dim slider or processor changes.
+ */
+function updateSelectionSummary(cube) {
+  const el = $('selection-summary');
+  if (!el) return;
+
+  const constraints = STATE.constraints;
+  const coordNames = cube.dim_coords.map(c => c.name);
+  const spatialNames = new Set(coordNames.slice(-2));
+  const extraCoords = cube.dim_coords.filter(c => !spatialNames.has(c.name));
+
+  if (extraCoords.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  // Header
+  let html = `<div class="sel-summary-header">\u25b6 Current selection</div>`;
+
+  extraCoords.forEach(coord => {
+    const spec = constraints[coord.name];
+    if (!spec) return;
+    const [lo, hi] = spec.range ?? [0, 0];
+    const proc = spec.processor || 'mean';
+    const n = hi - lo + 1;
+
+    // Read display values from the DOM (already formatted by fmtIdx)
+    const loTxt = $(`rlo-${coord.name}`)?.textContent ?? lo;
+    const hiTxt = $(`rhi-${coord.name}`)?.textContent ?? hi;
+
+    const isSingle = lo === hi;
+    const rangePart = isSingle
+      ? `<span class="sel-val">${loTxt}</span>`
+      : `<span class="sel-val">${loTxt}</span><span class="sel-arrow">\u2192</span><span class="sel-val">${hiTxt}</span><span class="sel-n">(${n})</span>`;
+
+    const procBadge = isSingle
+      ? '' // No processor shown for single-point
+      : `<span class="sel-proc">${proc}</span>`;
+
+    html += `
+      <div class="sel-row">
+        <span class="sel-name">${coord.name}</span>
+        <span class="sel-range">${rangePart}</span>
+        ${procBadge}
+      </div>`;
+  });
+
+  // Show effective plot shape
+  const spatialDims = cube.dim_coords.slice(-2);
+  const sy = spatialDims[0]?.shape[0] ?? '?';
+  const sx = spatialDims[1]?.shape[0] ?? '?';
+  const plotAxes = spatialDims.map(c => c.name).join(' \u00d7 ');
+  html += `
+    <div class="sel-plot-shape">
+      <span class="sel-name">Plot shape</span>
+      <span class="mono" style="color:var(--accent)">${sy} \u00d7 ${sx}</span>
+      <span style="color:var(--text-muted);font-size:0.62rem">(${plotAxes})</span>
+    </div>`;
+
+  el.innerHTML = html;
+}
+
+// ── Dimension Sliders ──────────────────────────────────────────────────────
+const PROCESSORS = ['mean', 'min', 'max', 'std', 'sum', 'median', 'rms', 'variance'];
+
 function buildDimSliders(cube) {
   const panel = $('panel-dims');
   const container = $('dim-sliders');
   container.innerHTML = '';
   STATE.constraints = {};
 
-  // Show sliders for all dims except the last two (assumed spatial)
-  // For a 1D cube show no sliders; for 2D also none; for 3D+ show extra dims
   const dims = cube.dim_coords;
   const ndim = cube.ndim;
+  // Extra dims = all but last 2 (the spatial/plot axes)
   const extraDims = ndim > 2 ? dims.slice(0, ndim - 2) : [];
 
   if (extraDims.length === 0) {
@@ -187,43 +322,92 @@ function buildDimSliders(cube) {
   panel.style.display = '';
 
   extraDims.forEach(coord => {
+    const hasValues = Array.isArray(coord.values) && coord.values.length > 0;
+    // Number of index steps along this dimension
+    const npts = hasValues ? coord.values.length : (coord.size || coord.shape?.[0] || 1);
+    const maxIdx = npts - 1;
+
+    // Format an index → display string
+    const fmtIdx = idx => {
+      if (hasValues) {
+        const v = coord.values[idx];
+        return typeof v === 'number' ? v.toFixed(3) : String(v);
+      }
+      const v = coord.min + (maxIdx > 0 ? (idx / maxIdx) : 0) * (coord.max - coord.min);
+      return v.toFixed(3);
+    };
+
+    // Get numeric value from index (for sending to backend)
+    const idxToVal = idx => {
+      if (hasValues) return coord.values[idx];
+      return coord.min + (maxIdx > 0 ? (idx / maxIdx) : 0) * (coord.max - coord.min);
+    };
+
+    // Initialise constraint: single point at index 0, processor = mean
+    STATE.constraints[coord.name] = { range: [0, 0], processor: 'mean', value: idxToVal(0) };
+
+    const procOptions = PROCESSORS.map(p =>
+      `<option value="${p}"${p === 'mean' ? ' selected' : ''}>${p}</option>`).join('');
+
     const group = document.createElement('div');
     group.className = 'dim-slider-group';
-
-    const hasValues = Array.isArray(coord.values) && coord.values.length > 0;
-    const n = hasValues ? coord.values.length : Math.round((coord.max - coord.min) / 1 + 1);
-    const min = hasValues ? 0 : coord.min;
-    const max = hasValues ? coord.values.length - 1 : coord.max;
-    const step = hasValues ? 1 : (coord.max - coord.min) / Math.max(1, n - 1);
-
-    const initVal = hasValues ? coord.values[0] : coord.min;
-    STATE.constraints[coord.name] = initVal;
-
-    const fmtVal = v => (typeof v === 'number' ? v.toFixed(3) : v);
-
     group.innerHTML = `
-      <div class="dim-slider-label">
+      <div class="dim-slider-header">
         <span class="dim-slider-name">${coord.name}</span>
-        <span class="dim-slider-val" id="sv-${coord.name}">${fmtVal(initVal)} <small>${coord.units}</small></span>
+        <span class="dim-units-tag">${coord.units || ''}</span>
+        <select class="dim-proc-select" id="proc-${coord.name}" title="Aggregation processor">
+          ${procOptions}
+        </select>
       </div>
-      <input type="range" class="slider" id="sl-${coord.name}"
-             min="0" max="${hasValues ? coord.values.length - 1 : coord.values ? coord.values.length - 1 : 0}"
-             step="1" value="0"
-             data-coord="${coord.name}"
-             data-values='${JSON.stringify(hasValues ? coord.values : [coord.min])}' />
+      <div class="range-display">
+        <span class="range-val-lo" id="rlo-${coord.name}">${fmtIdx(0)}</span>
+        <span class="range-arrow">→</span>
+        <span class="range-val-hi" id="rhi-${coord.name}">${fmtIdx(0)}</span>
+        <span class="range-npts" id="rnpts-${coord.name}">(1 pt)</span>
+      </div>
+      <div class="dual-slider-wrap">
+        <input type="range" class="slider slider-lo" id="slo-${coord.name}"
+               min="0" max="${maxIdx}" step="1" value="0" />
+        <input type="range" class="slider slider-hi" id="shi-${coord.name}"
+               min="0" max="${maxIdx}" step="1" value="0" />
+      </div>
+      <div class="slider-extent">
+        <span>${fmtIdx(0)}</span><span>${fmtIdx(maxIdx)}</span>
+      </div>
     `;
     container.appendChild(group);
 
-    // Bind slider
-    const sliderEl = group.querySelector(`#sl-${coord.name}`);
-    sliderEl.addEventListener('input', () => {
-      const vals = JSON.parse(sliderEl.dataset.values);
-      const idx2 = parseInt(sliderEl.value);
-      const v = vals[idx2] !== undefined ? vals[idx2] : coord.min + idx2 * step;
-      STATE.constraints[coord.name] = v;
-      $(`sv-${coord.name}`).innerHTML = `${fmtVal(v)} <small>${coord.units}</small>`;
-    });
+    const slo = $(`slo-${coord.name}`);
+    const shi = $(`shi-${coord.name}`);
+    const procSel = $(`proc-${coord.name}`);
+
+    function syncRange(movedLo) {
+      let lo = parseInt(slo.value);
+      let hi = parseInt(shi.value);
+      if (lo > hi) {
+        if (movedLo) { slo.value = hi; lo = hi; }
+        else { shi.value = lo; hi = lo; }
+      }
+      $(`rlo-${coord.name}`).textContent = fmtIdx(lo);
+      $(`rhi-${coord.name}`).textContent = fmtIdx(hi);
+      const n = hi - lo + 1;
+      $(`rnpts-${coord.name}`).textContent = `(${n} pt${n > 1 ? 's' : ''})`;
+      STATE.constraints[coord.name] = {
+        range: [lo, hi],
+        processor: procSel.value,
+        value: idxToVal(lo),
+      };
+      // Refresh the live selection summary in the Cube Dimensions panel
+      updateSelectionSummary(cube);
+    }
+
+    slo.addEventListener('input', () => syncRange(true));
+    shi.addEventListener('input', () => syncRange(false));
+    procSel.addEventListener('change', () => syncRange(true));
   });
+
+  // Render initial summary with default selections
+  updateSelectionSummary(cube);
 }
 
 // ── Plotting ──────────────────────────────────────────────────────────────────
@@ -311,7 +495,7 @@ async function render2D(data, meta, plotType, colormap) {
       },
       contours: { coloring: 'heatmap', showlabels: true, labelfont: { size: 9 } },
       line: { smoothing: 0.85 },
-      hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
+      hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y || { name: 'y' }).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
     }];
   } else if (plotType === 'line') {
     traces = [{
@@ -339,7 +523,7 @@ async function render2D(data, meta, plotType, colormap) {
         y: 0.5,
         yanchor: 'middle',
       },
-      hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
+      hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y || { name: 'y' }).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
     }];
   }
 
@@ -347,8 +531,8 @@ async function render2D(data, meta, plotType, colormap) {
   const showCoast = $('coastline-toggle').checked;
   if (showCoast && plotType !== 'line') {
     try {
-      const res    = $('coastline-res').value;
-      const col    = $('coastline-color').value;
+      const res = $('coastline-res').value;
+      const col = $('coastline-color').value;
       const clData = await fetchCoastlines(res);
 
       const xMin = Math.min(...xVals);
@@ -386,15 +570,21 @@ async function render2D(data, meta, plotType, colormap) {
     }
   }
 
-  // ── Detect lat/lon axes for aspect-ratio locking ─────────────────────────
+  // ── Detect lat/lon axes for aspect-ratio locking & coastlines ─────────────
   const xIsLon = /lon|degree/i.test(meta.x.name + ' ' + (meta.x.units || ''));
   const yIsLat = meta.y && /lat|degree/i.test(meta.y.name + ' ' + (meta.y.units || ''));
   const lockAspect = xIsLon && yIsLat && plotType !== 'line';
 
+  // Auto-enable coastlines if axes are geographic and user hasn't manually toggled off
+  if (xIsLon && yIsLat && plotType !== 'line') {
+    const toggle = $('coastline-toggle');
+    if (toggle && !toggle.checked) toggle.checked = true;
+  }
+
   const layout = {
     title: { text: titleText, font: { family: 'Inter', size: 14, color: '#e8ecf4' } },
     paper_bgcolor: '#181d2e',
-    plot_bgcolor:  '#111520',
+    plot_bgcolor: '#111520',
     font: { family: 'Inter', color: '#8b93a8', size: 11 },
     xaxis: {
       title: { text: `${meta.x.name} (${meta.x.units})`, font: { color: '#8b93a8' } },
@@ -458,7 +648,7 @@ async function plotTimeSeries(idx) {
     const layout = {
       title: { text: `${result.name} – spatial mean  [${result.units}]`, font: { family: 'Inter', size: 14, color: '#e8ecf4' } },
       paper_bgcolor: '#181d2e',
-      plot_bgcolor:  '#111520',
+      plot_bgcolor: '#111520',
       font: { family: 'Inter', color: '#8b93a8', size: 11 },
       xaxis: { title: { text: 'Time', font: { color: '#8b93a8' } }, gridcolor: 'rgba(255,255,255,0.05)', tickangle: -35 },
       yaxis: { title: { text: result.units, font: { color: '#8b93a8' } }, gridcolor: 'rgba(255,255,255,0.05)' },
@@ -493,7 +683,7 @@ function openModal(cube) {
   ).join('');
 
   const coordRows = (coords) => coords.map(c => {
-    const valStr = c.values ? `[${c.values.slice(0,5).map(v => typeof v === 'number' ? v.toFixed(3) : v).join(', ')}${c.values.length > 5 ? '…' : ''}]` : `${c.min?.toFixed(3)} → ${c.max?.toFixed(3)}`;
+    const valStr = c.values ? `[${c.values.slice(0, 5).map(v => typeof v === 'number' ? v.toFixed(3) : v).join(', ')}${c.values.length > 5 ? '…' : ''}]` : `${c.min?.toFixed(3)} → ${c.max?.toFixed(3)}`;
     return `<tr><td>${c.name}</td><td>${valStr}  <span style="color:#4f8ef7">${c.units}</span>  shape: (${c.shape.join(',')})</td></tr>`;
   }).join('');
 
@@ -553,16 +743,16 @@ const BROWSER = {
   currentPath: null,
   selectedFile: null,
   allFiles: [],
-  allDirs:  [],
+  allDirs: [],
 };
 
 const EXT_ICONS = {
-  '.nc':    '🌐',
-  '.pp':    '📊',
-  '.grb':   '🌬️',
-  '.grib':  '🌬️',
+  '.nc': '🌐',
+  '.pp': '📊',
+  '.grb': '🌬️',
+  '.grib': '🌬️',
   '.grib2': '🌬️',
-  '.grb2':  '🌬️',
+  '.grb2': '🌬️',
 };
 
 function openBrowser() {
@@ -599,8 +789,8 @@ async function browserNav(path) {
     const data = await apiFetch(url);
 
     BROWSER.currentPath = data.path;
-    BROWSER.allDirs     = data.dirs;
-    BROWSER.allFiles    = data.files;
+    BROWSER.allDirs = data.dirs;
+    BROWSER.allFiles = data.files;
 
     renderBreadcrumbs(data.parents);
     renderBrowserDirs(data.dirs);
@@ -704,7 +894,7 @@ function renderBrowserFiles(files) {
       </div>
     `;
 
-    item.onclick    = () => browserSelectItem(item, f.path);
+    item.onclick = () => browserSelectItem(item, f.path);
     item.ondblclick = () => { browserSelectItem(item, f.path); browserSelectFile(); };
     el.appendChild(item);
   });
@@ -737,8 +927,8 @@ function browserSelectFile() {
 
 function fmtSize(bytes) {
   if (bytes == null) return '';
-  if (bytes < 1024)          return bytes + ' B';
-  if (bytes < 1024 * 1024)   return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1024 ** 3)     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 ** 3) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   return (bytes / 1024 ** 3).toFixed(2) + ' GB';
 }

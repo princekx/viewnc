@@ -19,6 +19,28 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+
+# ── NaN-safe JSON serialisation ───────────────────────────────────────────────
+# Python's json module raises on NaN/Inf; Flask's default encoder inherits
+# that limitation.  We override it to emit `null` for any non-finite float
+# so masked / fill-value data never breaks the client.
+
+class _NanSafeEncoder(json.JSONEncoder):
+    def iterencode(self, o, _one_shot=False):
+        # Walk the object tree and replace non-finite floats with None
+        return super().iterencode(self._sanitise(o), _one_shot)
+
+    def _sanitise(self, obj):
+        if isinstance(obj, float):
+            return None if (obj != obj or obj == float('inf') or obj == float('-inf')) else obj
+        if isinstance(obj, dict):
+            return {k: self._sanitise(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [self._sanitise(v) for v in obj]
+        return obj
+
+app.json_encoder = _NanSafeEncoder  # type: ignore[attr-defined]
+
 # ── Global state ─────────────────────────────────────────────────────────────
 _state: dict = {
     "filepath": None,

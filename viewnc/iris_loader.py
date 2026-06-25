@@ -10,7 +10,18 @@ from pathlib import Path
 from typing import Any
 
 import iris
+import iris.analysis as ia
 import numpy as np
+import warnings
+
+# Use microsecond-precision dates (avoids iris FutureWarning about legacy precision)
+try:
+    iris.FUTURE.date_microseconds = True
+except AttributeError:
+    pass  # older iris versions don't have this flag
+
+# Suppress any remaining cf_units date-precision warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="iris")
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +29,31 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _is_time_coord(coord) -> bool:
+    """Return True if this coordinate represents a time axis."""
+    try:
+        units_str = str(coord.units).lower()
+        return (
+            coord.standard_name == "time"
+            or coord.name().lower() in {"time", "t"}
+            or " since " in units_str          # e.g. "days since 1970-01-01"
+            or coord.units.is_convertible("days since epoch")
+        )
+    except Exception:
+        return False
+
+
+def _fmt_date(dt) -> str:
+    """Format a cftime or datetime object as a compact ISO-style string."""
+    try:
+        # cftime objects expose year/month/day/hour/minute/second
+        if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+            return f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}"
+        return f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d} {dt.hour:02d}:{dt.minute:02d}"
+    except AttributeError:
+        return str(dt)
+
 
 def _coord_summary(coord) -> dict:
     """Return a JSON-serialisable summary of a single iris Coord."""
@@ -30,7 +66,21 @@ def _coord_summary(coord) -> dict:
         "dtype": str(pts.dtype),
     }
     if pts.size == 0:
-        info.update({"min": None, "max": None, "values": []})
+        info.update({"min": None, "max": None, "values": [], "size": 0})
+    elif _is_time_coord(coord) and (
+        np.issubdtype(pts.dtype, np.floating) or np.issubdtype(pts.dtype, np.integer)
+    ):
+        # Convert numeric time values → human-readable date strings
+        info["min"] = float(np.nanmin(pts))
+        info["max"] = float(np.nanmax(pts))
+        info["size"] = int(pts.size)
+        try:
+            dates = [_fmt_date(coord.units.num2date(v)) for v in pts.flatten()]
+            info["values"] = dates  # always include for time (used by sliders)
+            info["is_time"] = True
+        except Exception as exc:
+            logger.warning("Time conversion failed for %s: %s", coord.name(), exc)
+            info["values"] = pts.flatten().tolist() if pts.size <= 100 else None
     elif np.issubdtype(pts.dtype, np.floating) or np.issubdtype(pts.dtype, np.integer):
         info["min"] = float(np.nanmin(pts))
         info["max"] = float(np.nanmax(pts))
@@ -39,8 +89,10 @@ def _coord_summary(coord) -> dict:
             info["values"] = pts.flatten().tolist()
         else:
             info["values"] = None  # let the UI build a range slider
+        info["size"] = int(pts.size)
     else:
         info["values"] = pts.flatten().astype(str).tolist()[:100]
+        info["size"] = int(pts.size)
     return info
 
 
@@ -150,6 +202,19 @@ def _find_spatial_coords(cube, cubes: "iris.cube.CubeList | None" = None):
     return x_coord, y_coord
 
 
+# Map of processor name → iris analyser
+_PROCESSORS = {
+    "mean":   ia.MEAN,
+    "std":    ia.STD_DEV,
+    "min":    ia.MIN,
+    "max":    ia.MAX,
+    "sum":    ia.SUM,
+    "median": ia.MEDIAN,
+    "rms":    ia.RMS,
+    "variance": ia.VARIANCE,
+}
+
+
 def extract_slice(
     cubes: "iris.cube.CubeList",
     cube_index: int,
@@ -162,7 +227,12 @@ def extract_slice(
     ----------
     cubes       : CubeList from load_file()
     cube_index  : which cube to slice
-    constraints : dict mapping coord name → scalar value (or None to use first)
+    constraints : dict mapping coord name → {
+                    "value": scalar (for point selection),
+                    OR
+                    "range": [lo, hi],  (for range-based collapse)
+                    "processor": "mean"|"std"|"min"|"max"|"sum"|...
+                  }
 
     Returns
     -------
@@ -171,30 +241,76 @@ def extract_slice(
     """
     cube = cubes[cube_index]
 
-    # ── Apply scalar constraints (collapse extra dims) ──────────────────────
+    # ── Apply constraints (scalar or range-collapse) ────────────────────────
     sliced = cube
-    for coord_name, value in constraints.items():
-        if value is None:
+    for coord_name, spec in constraints.items():
+        if spec is None:
             continue
+
+        # Normalise spec: support legacy scalar value and new dict form
+        if isinstance(spec, dict):
+            val_range = spec.get("range")      # [lo, hi] indices or None
+            scalar    = spec.get("value")
+            processor = spec.get("processor", "mean")
+        else:
+            # Legacy: plain scalar
+            val_range = None
+            scalar    = spec
+            processor = "mean"
+
         try:
             coord = sliced.coord(coord_name)
             if coord.ndim != 1:
                 continue
-            constraint = _safe_constraint(sliced, coord_name, float(value))
-            result = sliced.extract(constraint)
-            if result is None:
-                # Fallback: index-based slicing
-                dim_idx = cube.coord_dims(coord)[0]
-                pts = coord.points
-                idx = int(np.argmin(np.abs(pts - float(value))))
-                sliced = sliced[tuple(
-                    idx if i == dim_idx else slice(None)
+            pts = coord.points
+
+            if val_range is not None:
+                # Range collapse: extract sub-range by index and apply processor
+                lo_idx = int(val_range[0])
+                hi_idx = int(val_range[1])
+                # Clamp to valid index range
+                lo_idx = max(0, min(lo_idx, len(pts) - 1))
+                hi_idx = max(lo_idx, min(hi_idx, len(pts) - 1))
+
+                # Determine the dimension index for this coord
+                try:
+                    dim_idx = sliced.coord_dims(coord)[0]
+                except Exception:
+                    continue
+
+                # Slice the sub-range
+                idx_slices = tuple(
+                    slice(lo_idx, hi_idx + 1) if i == dim_idx else slice(None)
                     for i in range(sliced.ndim)
-                )]
+                )
+                sub = sliced[idx_slices]
+
+                # Collapse with processor
+                analyser = _PROCESSORS.get(processor, ia.MEAN)
+                try:
+                    sliced = sub.collapsed(coord_name, analyser)
+                except Exception as exc:
+                    logger.warning("Collapse of %s with %s failed: %s; taking first index", coord_name, processor, exc)
+                    sliced = sub[tuple(
+                        0 if i == dim_idx else slice(None)
+                        for i in range(sub.ndim)
+                    )]
             else:
-                sliced = result
+                # Single-point constraint (nearest)
+                value = float(scalar) if scalar is not None else float(pts[0])
+                constraint = _safe_constraint(sliced, coord_name, value)
+                result = sliced.extract(constraint)
+                if result is None:
+                    dim_idx = sliced.coord_dims(coord)[0]
+                    idx = int(np.argmin(np.abs(pts - value)))
+                    sliced = sliced[tuple(
+                        idx if i == dim_idx else slice(None)
+                        for i in range(sliced.ndim)
+                    )]
+                else:
+                    sliced = result
         except Exception as exc:
-            logger.warning("Constraint on %s=%s failed: %s", coord_name, value, exc)
+            logger.warning("Constraint on %s=%s failed: %s", coord_name, spec, exc)
 
     # ── Collapse any remaining extra dims to get to 2D ──────────────────────
     while sliced.ndim > 2:
@@ -239,14 +355,23 @@ def extract_slice(
             "size": int(pts.size),
         }
 
+    # Compute vmin / vmax safely – nanmin/nanmax return NaN when ALL values
+    # are masked (e.g. NCEP fill-value data), which is not valid JSON.
+    def _safe_stat(fn, fallback):
+        try:
+            v = float(fn(data))
+            return fallback if (np.isnan(v) or np.isinf(v)) else v
+        except Exception:
+            return fallback
+
     meta = {
         "x": _axis_info(raw_x, nx),
         "y": _axis_info(raw_y, ny),
         "units": str(sliced.units),
         "name": sliced.name(),
         "shape": list(data.shape),
-        "vmin": float(np.nanmin(data)) if data.size else 0,
-        "vmax": float(np.nanmax(data)) if data.size else 1,
+        "vmin": _safe_stat(np.nanmin, 0.0) if data.size else 0.0,
+        "vmax": _safe_stat(np.nanmax, 1.0) if data.size else 1.0,
     }
 
     return data, meta
