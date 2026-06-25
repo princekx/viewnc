@@ -15,6 +15,60 @@ const STATE = {
 // Client-side coastline cache (fetched once per resolution)
 const _coastlineCache = {};
 
+// ── Bokeh-inspired palette definitions ────────────────────────────────────────
+// Each entry is an array of hex stops (first → last = low → high value).
+// Sourced from bokeh.palettes; expressed as compact representative stops so
+// Plotly can interpolate the full gradient.
+const BOKEH_PALETTES = {
+  // ── Perceptually-uniform (Matplotlib / Bokeh)
+  'Viridis': ['#440154', '#472d7b', '#3b528b', '#27808e', '#1fa187', '#5dc963', '#fde725'],
+  'Magma': ['#000004', '#3b0f70', '#8c2981', '#de4968', '#fe9f6d', '#fecf92', '#fcfdbf'],
+  'Inferno': ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#f8f92e', '#fcffa4'],
+  'Plasma': ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921'],
+  'Cividis': ['#00204c', '#213d6b', '#555b6d', '#7b7e73', '#a3a679', '#d3cb7d', '#ffea46'],
+  'Turbo': ['#23171b', '#4a6be3', '#26bbce', '#5af484', '#fddd3e', '#f34214', '#900c00'],
+
+  // ── Diverging
+  'RdBu': ['#67001f', '#b2182b', '#d6604d', '#f4a582', '#fddbc7', '#f7f7f7', '#d1e5f0', '#92c5de', '#4393c3', '#2166ac', '#053061'],
+  'RdBu_r': ['#053061', '#2166ac', '#4393c3', '#92c5de', '#d1e5f0', '#f7f7f7', '#fddbc7', '#f4a582', '#d6604d', '#b2182b', '#67001f'],
+  'PRGn': ['#40004b', '#762a83', '#9970ab', '#c2a5cf', '#e7d4e8', '#f7f7f7', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837', '#00441b'],
+  'PiYG': ['#8e0152', '#c51b7d', '#de77ae', '#f1b6da', '#fde0ef', '#f7f7f7', '#e6f5d0', '#b8e186', '#7fbc41', '#4d9221', '#276419'],
+  'BrBG': ['#543005', '#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#f5f5f5', '#c7eae5', '#80cdc1', '#35978f', '#01665e', '#003c30'],
+  'Spectral': ['#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#e6f598', '#abdda4', '#66c2a5', '#3288bd', '#5e4fa2'],
+  'RdYlBu': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee090', '#ffffbf', '#e0f3f8', '#abd9e9', '#74add1', '#4575b4', '#313695'],
+  'RdYlGn': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837'],
+
+  // ── Sequential (single-hue)
+  'Blues': ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#084594'],
+  'Greens': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+  'Oranges': ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801', '#8c2d04'],
+  'Purples': ['#fcfbfd', '#efedf5', '#dadaeb', '#bcbddc', '#9e9ac8', '#807dba', '#6a51a3', '#4a1486'],
+  'Reds': ['#fff5f0', '#fee0d2', '#fcbba1', '#fc9272', '#fb6a4a', '#ef3b2c', '#cb181d', '#67000d'],
+  'YlOrRd': ['#ffffcc', '#ffeda0', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#b10026'],
+  'YlGnBu': ['#ffffd9', '#edf8b1', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#0c2c84'],
+  'BuPu': ['#f7fcfd', '#e0ecf4', '#bfd3e6', '#9ebcda', '#8c96c6', '#8c6bb1', '#88419d', '#6e016b'],
+  'GnBu': ['#f7fcf0', '#e0f3db', '#ccebc5', '#a8ddb5', '#7bccc4', '#4eb3d3', '#2b8cbe', '#08589e'],
+  'PuRd': ['#f7f4f9', '#e7e1ef', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#91003f'],
+
+  // ── Categorical / qualitative
+  'Category10': ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'],
+  'Bokeh': ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'],
+
+  // ── Sunrise / Sunset (Bokeh named)
+  'Sunset': ['#364B9A', '#4A7BB7', '#6EA6CD', '#98CAE1', '#C2E4EF', '#EAECCC', '#FEDA8B', '#FDB366', '#F67E4B', '#DD3D2D', '#A50026'],
+  'Sunrise': ['#e8642b', '#fb9e41', '#fec46d', '#fff5ba', '#bde1a4', '#77c87a', '#3ea160', '#117a50'],
+};
+
+/**
+ * Convert a named Bokeh palette to a Plotly colorscale array.
+ * Falls back to using the string directly (for native Plotly names).
+ */
+function bokehToPlotly(name) {
+  const stops = BOKEH_PALETTES[name];
+  if (!stops) return name; // native Plotly colorscale name
+  return stops.map((hex, i) => [i / (stops.length - 1), hex]);
+}
+
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -32,6 +86,22 @@ function setPlotMode(enabled) {
 
 function nextFrame() {
   return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+// ── Panel collapse/expand ────────────────────────────────────────────────────
+function togglePanel(id) {
+  const panel = $(id);
+  if (panel) panel.classList.toggle('collapsed');
+}
+
+function expandPanel(id) {
+  const panel = $(id);
+  if (panel) panel.classList.remove('collapsed');
+}
+
+function collapsePanel(id) {
+  const panel = $(id);
+  if (panel) panel.classList.add('collapsed');
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
@@ -89,6 +159,11 @@ async function loadFile() {
     $('plot-area').classList.add('hidden');
     $('plot-btn').disabled = true;
 
+    // Auto-expand Variables panel so the user can see what loaded
+    expandPanel('panel-vars');
+    // Open the Plot Type panel so the Plot button is visible
+    expandPanel('panel-plot');
+
     setStatus(`${data.cubes.length} cube(s) loaded`, 'ok');
   } catch (err) {
     showError('load-error', err.message);
@@ -100,6 +175,14 @@ async function loadFile() {
 
 // Allow Enter key in filepath input
 $('filepath-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadFile(); });
+
+// Show/hide contour-levels-row based on selected plot type
+document.querySelectorAll('input[name="plot-type"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const isContour = $('radio-contour').checked;
+    $('contour-levels-row').classList.toggle('hidden', !isContour);
+  });
+});
 
 // ── Variable List ─────────────────────────────────────────────────────────────
 function renderVarList() {
@@ -477,51 +560,120 @@ async function render2D(data, meta, plotType, colormap) {
     ? meta.y.values
     : linspace((meta.y ? meta.y.min : 0) ?? 0, (meta.y ? meta.y.max : ny - 1) ?? ny - 1, ny);
 
+  const margin = { t: 50, b: 60, l: 72, r: 80 };
+  const plotH = getPlotHeight();
+  const plotAreaH = plotH - margin.t - margin.b;
+  // Colorbar initial sizing: fraction of paper height occupied by the axis area.
+  // After render we do a correction pass for scaleanchor-constrained plots.
+  const cbLen = plotAreaH / plotH;
+  const cbY = (margin.b + plotAreaH / 2) / plotH;
+
   let traces;
   if (plotType === 'contour') {
+    const ncontours = parseInt($('contour-levels')?.value ?? '10', 10);
+    const filled = $('contour-filled')?.checked ?? true;
+    const minValStr = $('contour-min')?.value.trim() ?? '';
+    const maxValStr = $('contour-max')?.value.trim() ?? '';
+    const minVal = minValStr !== '' && !isNaN(parseFloat(minValStr)) ? parseFloat(minValStr) : null;
+    const maxVal = maxValStr !== '' && !isNaN(parseFloat(maxValStr)) ? parseFloat(maxValStr) : null;
+
+    let autocontour = true;
+    let contourOpts = {
+      coloring: filled ? 'heatmap' : 'lines',
+      showlabels: true,
+      labelfont: { size: 9, color: '#0f172a' },
+    };
+    let zmin = undefined;
+    let zmax = undefined;
+
+    if (minVal !== null && maxVal !== null) {
+      if (minVal < maxVal) {
+        autocontour = false;
+        contourOpts.start = minVal;
+        contourOpts.end = maxVal;
+        contourOpts.size = (maxVal - minVal) / ncontours;
+        zmin = minVal;
+        zmax = maxVal;
+      }
+    } else if (minVal !== null) {
+      zmin = minVal;
+    } else if (maxVal !== null) {
+      zmax = maxVal;
+    }
+
     traces = [{
       type: 'contour',
       x: xVals,
       y: yVals,
       z: data,
-      colorscale: colormap,
+      autocontour: autocontour,
+      ncontours: autocontour ? ncontours : undefined,
+      zmin: zmin,
+      zmax: zmax,
+      colorscale: bokehToPlotly(colormap),
       colorbar: {
-        title: { text: cube.units, side: 'right' },
-        thickness: 16,
+        title: { text: cube.units, side: 'right', font: { color: '#475569', size: 11 } },
+        tickfont: { color: '#475569', size: 10 },
+        thickness: 14,
         lenmode: 'fraction',
-        len: 1,
-        y: 0.5,
+        len: cbLen,
+        y: cbY,
         yanchor: 'middle',
+        ypad: 0,
+        bgcolor: 'rgba(255,255,255,0.8)',
+        bordercolor: 'rgba(30,40,80,0.12)',
+        borderwidth: 1,
       },
-      contours: { coloring: 'heatmap', showlabels: true, labelfont: { size: 9 } },
+      contours: contourOpts,
       line: { smoothing: 0.85 },
       hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y || { name: 'y' }).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
     }];
   } else if (plotType === 'line') {
-    traces = [{
-      type: 'scatter',
-      mode: 'lines+markers',
-      x: xVals,
-      y: data[Math.floor(data.length / 2)],
-      line: { color: '#4f8ef7', width: 2 },
-      marker: { size: 4, color: '#4f8ef7' },
-      name: cube.name,
-      hovertemplate: `${meta.x.name}: %{x:.2f}<br>Value: %{y:.4g}<extra></extra>`,
-    }];
+    const yData = data[Math.floor(data.length / 2)];
+    traces = [
+      // Filled area underneath the line
+      {
+        type: 'scatter',
+        mode: 'none',
+        x: xVals,
+        y: yData,
+        fill: 'tozeroy',
+        fillcolor: 'rgba(37,99,235,0.10)',
+        showlegend: false,
+        hoverinfo: 'none',
+        name: '',
+      },
+      // The line itself
+      {
+        type: 'scatter',
+        mode: 'lines+markers',
+        x: xVals,
+        y: yData,
+        line: { color: '#2563eb', width: 2.5, shape: 'spline', smoothing: 0.6 },
+        marker: { size: 5, color: '#ffffff', line: { color: '#2563eb', width: 2 } },
+        name: cube.name,
+        hovertemplate: `${meta.x.name}: %{x:.2f}<br>Value: %{y:.4g}<extra></extra>`,
+      },
+    ];
   } else {
     traces = [{
       type: 'heatmap',
       x: xVals,
       y: yVals,
       z: data,
-      colorscale: colormap,
+      colorscale: bokehToPlotly(colormap),
       colorbar: {
-        title: { text: cube.units, side: 'right' },
-        thickness: 16,
+        title: { text: cube.units, side: 'right', font: { color: '#475569', size: 11 } },
+        tickfont: { color: '#475569', size: 10 },
+        thickness: 14,
         lenmode: 'fraction',
-        len: 1,
-        y: 0.5,
+        len: cbLen,
+        y: cbY,
         yanchor: 'middle',
+        ypad: 0,
+        bgcolor: 'rgba(255,255,255,0.8)',
+        bordercolor: 'rgba(30,40,80,0.12)',
+        borderwidth: 1,
       },
       hovertemplate: `${meta.x.name}: %{x:.2f}<br>${(meta.y || { name: 'y' }).name}: %{y:.2f}<br>Value: %{z:.4g}<extra></extra>`,
     }];
@@ -582,25 +734,35 @@ async function render2D(data, meta, plotType, colormap) {
   }
 
   const layout = {
-    title: { text: titleText, font: { family: 'Inter', size: 14, color: '#e8ecf4' } },
-    paper_bgcolor: '#181d2e',
-    plot_bgcolor: '#111520',
-    font: { family: 'Inter', color: '#8b93a8', size: 11 },
+    title: {
+      text: titleText,
+      font: { family: 'Inter', size: 14, color: '#0f172a', weight: 600 },
+      x: 0.04,
+    },
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor: '#f8faff',
+    font: { family: 'Inter', color: '#475569', size: 11 },
     xaxis: {
-      title: { text: `${meta.x.name} (${meta.x.units})`, font: { color: '#8b93a8' } },
-      gridcolor: 'rgba(255,255,255,0.05)',
-      linecolor: 'rgba(255,255,255,0.1)',
-      tickcolor: 'rgba(255,255,255,0.1)',
+      title: { text: `${meta.x.name} (${meta.x.units})`, font: { color: '#475569', size: 11 } },
+      gridcolor: 'rgba(30,40,80,0.07)',
+      linecolor: 'rgba(30,40,80,0.15)',
+      tickcolor: 'rgba(30,40,80,0.15)',
+      tickfont: { color: '#475569' },
+      zerolinecolor: 'rgba(30,40,80,0.20)',
+      zerolinewidth: 1,
     },
     yaxis: {
-      title: { text: meta.y ? `${meta.y.name} (${meta.y.units})` : 'Index', font: { color: '#8b93a8' } },
-      gridcolor: 'rgba(255,255,255,0.05)',
-      linecolor: 'rgba(255,255,255,0.1)',
-      tickcolor: 'rgba(255,255,255,0.1)',
+      title: { text: meta.y ? `${meta.y.name} (${meta.y.units})` : 'Index', font: { color: '#475569', size: 11 } },
+      gridcolor: 'rgba(30,40,80,0.07)',
+      linecolor: 'rgba(30,40,80,0.15)',
+      tickcolor: 'rgba(30,40,80,0.15)',
+      tickfont: { color: '#475569' },
+      zerolinecolor: 'rgba(30,40,80,0.20)',
+      zerolinewidth: 1,
       // Lock to 1:1 degree ratio when both axes are geographic
       ...(lockAspect ? { scaleanchor: 'x', scaleratio: 1, constrain: 'domain' } : {}),
     },
-    margin: { t: 50, b: 60, l: 70, r: 80 },
+    margin: margin,
     autosize: true,
     height: getPlotHeight(),
   };
@@ -623,6 +785,35 @@ async function render2D(data, meta, plotType, colormap) {
   await nextFrame();
   Plotly.relayout('plotly-div', { height: getPlotHeight() });
   Plotly.Plots.resize('plotly-div');
+
+  // ── Post-render colorbar correction ─────────────────────────────────────────
+  // When scaleanchor is active (geographic plots), Plotly compresses the axis
+  // area to maintain aspect ratio.  Read the actual rendered axis pixel height
+  // and restyle the colorbar so it matches exactly.
+  await nextFrame();
+  try {
+    const gd = $('plotly-div');
+    const fl = gd._fullLayout;
+    const actualAxisH = fl?.yaxis?._length;   // rendered axis height in px
+    const totalH = fl?.height;            // total figure height in px
+    const axisOffset = fl?.yaxis?._offset;   // px from bottom of paper to axis bottom
+    if (actualAxisH && totalH && axisOffset != null) {
+      const corrLen = actualAxisH / totalH;
+      const corrY = (axisOffset + actualAxisH / 2) / totalH;
+      const styleUpdate = {};
+      const traceIndices = [];
+      traces.forEach((t, i) => {
+        if (t.colorbar) {
+          styleUpdate[`colorbar.len`] = corrLen;
+          styleUpdate[`colorbar.y`] = corrY;
+          traceIndices.push(i);
+        }
+      });
+      if (traceIndices.length) {
+        Plotly.restyle('plotly-div', styleUpdate, traceIndices);
+      }
+    }
+  } catch (_) { /* best-effort */ }
 }
 
 async function plotTimeSeries(idx) {
@@ -635,26 +826,62 @@ async function plotTimeSeries(idx) {
     });
 
     const cube = STATE.cubes[idx];
-    const traces = [{
-      type: 'scatter',
-      mode: 'lines+markers',
-      x: result.time,
-      y: result.values,
-      line: { color: '#4f8ef7', width: 2 },
-      marker: { size: 5, color: '#7c5cfc' },
-      name: result.name,
-    }];
+    const traces = [
+      // Shaded fill under the line
+      {
+        type: 'scatter',
+        mode: 'none',
+        x: result.time,
+        y: result.values,
+        fill: 'tozeroy',
+        fillcolor: 'rgba(37,99,235,0.08)',
+        showlegend: false,
+        hoverinfo: 'none',
+        name: '',
+      },
+      // Main line
+      {
+        type: 'scatter',
+        mode: 'lines+markers',
+        x: result.time,
+        y: result.values,
+        line: { color: '#2563eb', width: 2.5, shape: 'spline', smoothing: 0.6 },
+        marker: { size: 5, color: '#ffffff', line: { color: '#2563eb', width: 2 } },
+        name: result.name,
+      },
+    ];
 
     const layout = {
-      title: { text: `${result.name} – spatial mean  [${result.units}]`, font: { family: 'Inter', size: 14, color: '#e8ecf4' } },
-      paper_bgcolor: '#181d2e',
-      plot_bgcolor: '#111520',
-      font: { family: 'Inter', color: '#8b93a8', size: 11 },
-      xaxis: { title: { text: 'Time', font: { color: '#8b93a8' } }, gridcolor: 'rgba(255,255,255,0.05)', tickangle: -35 },
-      yaxis: { title: { text: result.units, font: { color: '#8b93a8' } }, gridcolor: 'rgba(255,255,255,0.05)' },
-      margin: { t: 50, b: 100, l: 70, r: 30 },
+      title: {
+        text: `${result.name} – spatial mean  [${result.units}]`,
+        font: { family: 'Inter', size: 14, color: '#0f172a', weight: 600 },
+        x: 0.04,
+      },
+      paper_bgcolor: '#ffffff',
+      plot_bgcolor: '#f8faff',
+      font: { family: 'Inter', color: '#475569', size: 11 },
+      xaxis: {
+        title: { text: 'Time', font: { color: '#475569', size: 11 } },
+        gridcolor: 'rgba(30,40,80,0.07)',
+        linecolor: 'rgba(30,40,80,0.15)',
+        tickcolor: 'rgba(30,40,80,0.15)',
+        tickfont: { color: '#475569' },
+        tickangle: -35,
+        zerolinecolor: 'rgba(30,40,80,0.20)',
+      },
+      yaxis: {
+        title: { text: result.units, font: { color: '#475569', size: 11 } },
+        gridcolor: 'rgba(30,40,80,0.07)',
+        linecolor: 'rgba(30,40,80,0.15)',
+        tickcolor: 'rgba(30,40,80,0.15)',
+        tickfont: { color: '#475569' },
+        zerolinecolor: 'rgba(30,40,80,0.20)',
+        rangemode: 'tozero',
+      },
+      margin: { t: 50, b: 100, l: 72, r: 30 },
       autosize: true,
       height: getPlotHeight(),
+      showlegend: false,
     };
 
     $('plot-title-bar').textContent = `${result.name} — time series`;

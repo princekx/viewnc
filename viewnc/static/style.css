@@ -1,37 +1,37 @@
 /* ─────────────────────────────────────────────────────────────
    viewnc  ·  style.css
-   Dark glassmorphism design with smooth micro-animations
+   Clean professional light design with smooth micro-animations
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  /* Palette */
-  --bg-base: #0a0d14;
-  --bg-surface: #111520;
-  --bg-elevated: #181d2e;
-  --bg-hover: #1e2438;
-  --bg-active: #222a42;
+  /* Palette – professional light / white */
+  --bg-base: #f0f2f7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #eef1f8;
+  --bg-active: #e2e8f8;
 
-  --border: rgba(255, 255, 255, 0.07);
-  --border-bright: rgba(255, 255, 255, 0.15);
+  --border: rgba(30, 40, 80, 0.10);
+  --border-bright: rgba(30, 40, 80, 0.20);
 
-  --accent: #4f8ef7;
-  --accent-glow: rgba(79, 142, 247, 0.25);
-  --accent2: #7c5cfc;
-  --accent-green: #3ecf8e;
-  --accent-red: #f56565;
-  --accent-orange: #f6a623;
+  --accent: #2563eb;
+  --accent-glow: rgba(37, 99, 235, 0.18);
+  --accent2: #7c3aed;
+  --accent-green: #059669;
+  --accent-red: #dc2626;
+  --accent-orange: #d97706;
 
-  --text-primary: #e8ecf4;
-  --text-secondary: #8b93a8;
-  --text-muted: #4d5568;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
 
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 16px;
   --radius-xl: 24px;
 
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.65);
+  --shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 40px rgba(15, 23, 42, 0.14);
 
   --transition: 0.18s ease;
 
@@ -68,9 +68,10 @@ body {
   left: 0;
   right: 0;
   height: var(--header-h);
-  background: rgba(10, 13, 20, 0.85);
+  background: rgba(255, 255, 255, 0.90);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.07);
   z-index: 100;
 }
 
@@ -121,6 +122,15 @@ body {
   min-width: var(--sidebar-w);
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-h));
+  position: sticky;
+  top: var(--header-h);
+}
+
+.sidebar-scrollable {
+  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px 10px;
@@ -128,6 +138,15 @@ body {
   flex-direction: column;
   gap: 10px;
 }
+
+.sidebar-footer {
+  padding: 10px 10px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+}
+
 
 /* ── Panel ── */
 .panel {
@@ -147,8 +166,46 @@ body {
   align-items: center;
   gap: 7px;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(15, 23, 42, 0.02);
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.panel-header:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+/* Chevron indicator */
+.panel-chevron {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.panel.collapsed .panel-chevron {
+  transform: rotate(-90deg);
+}
+
+/* Collapsed state – hide body with smooth height animation */
+.panel .panel-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  max-height: 800px;
+  /* large enough for any panel */
+}
+
+.panel.collapsed .panel-body {
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Remove bottom border from header when collapsed */
+.panel.collapsed .panel-header {
+  border-bottom-color: transparent;
 }
 
 .panel-icon {
@@ -338,15 +395,15 @@ body {
 }
 
 .alert-error {
-  background: rgba(245, 101, 101, 0.1);
-  border: 1px solid rgba(245, 101, 101, 0.25);
-  color: #fc8181;
+  background: rgba(220, 38, 38, 0.07);
+  border: 1px solid rgba(220, 38, 38, 0.20);
+  color: #b91c1c;
 }
 
 .alert-info {
-  background: rgba(79, 142, 247, 0.1);
-  border: 1px solid rgba(79, 142, 247, 0.25);
-  color: #90cdf4;
+  background: rgba(37, 99, 235, 0.07);
+  border: 1px solid rgba(37, 99, 235, 0.20);
+  color: #1d4ed8;
 }
 
 /* ── Variable List ── */
@@ -724,7 +781,7 @@ body {
   align-items: center;
   gap: 5px;
   padding: 3px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
   font-size: 0.7rem;
   flex-wrap: wrap;
 }
@@ -779,8 +836,8 @@ body {
   gap: 6px;
   margin-top: 6px;
   padding: 5px 8px;
-  background: rgba(79, 142, 247, 0.05);
-  border: 1px solid rgba(79, 142, 247, 0.15);
+  background: rgba(37, 99, 235, 0.05);
+  border: 1px solid rgba(37, 99, 235, 0.15);
   border-radius: var(--radius-sm);
   font-size: 0.7rem;
 }
@@ -969,7 +1026,7 @@ body {
   justify-content: space-between;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(15, 23, 42, 0.02);
 }
 
 .plot-title-bar {
@@ -993,7 +1050,7 @@ body {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10, 13, 20, 0.7);
+  background: rgba(240, 242, 247, 0.80);
   backdrop-filter: blur(6px);
   display: flex;
   flex-direction: column;
@@ -1027,8 +1084,8 @@ body {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(6px);
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1154,12 +1211,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-hover);
+  background: #cbd5e1;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-bright);
+  background: #94a3b8;
 }
 
 /* ── Coastline / option toggle row ── */
@@ -1279,7 +1336,7 @@ body {
   gap: 2px;
   padding: 8px 20px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(15, 23, 42, 0.02);
   min-height: 38px;
 }
 
@@ -1504,7 +1561,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(15, 23, 42, 0.02);
 }
 
 .browser-footer-actions {
