@@ -129,44 +129,17 @@
             </div>
             <div class="colormap-row" id="colormap-row">
               <label class="field-label">Colormap</label>
-              <select id="colormap-select" class="select">
-                <optgroup label="── Perceptually Uniform ──">
-                  <option value="Viridis" selected>Viridis</option>
-                  <option value="Magma">Magma</option>
-                  <option value="Inferno">Inferno</option>
-                  <option value="Plasma">Plasma</option>
-                  <option value="Cividis">Cividis</option>
-                  <option value="Turbo">Turbo</option>
-                </optgroup>
-                <optgroup label="── Diverging ──">
-                  <option value="RdBu_r">RdBu (blue–white–red)</option>
-                  <option value="RdBu">RdBu reversed</option>
-                  <option value="Spectral">Spectral</option>
-                  <option value="RdYlBu">RdYlBu</option>
-                  <option value="RdYlGn">RdYlGn</option>
-                  <option value="PRGn">PRGn</option>
-                  <option value="PiYG">PiYG</option>
-                  <option value="BrBG">BrBG</option>
-                </optgroup>
-                <optgroup label="── Sequential ──">
-                  <option value="Blues">Blues</option>
-                  <option value="Greens">Greens</option>
-                  <option value="Oranges">Oranges</option>
-                  <option value="Purples">Purples</option>
-                  <option value="Reds">Reds</option>
-                  <option value="YlOrRd">YlOrRd</option>
-                  <option value="YlGnBu">YlGnBu</option>
-                  <option value="GnBu">GnBu</option>
-                  <option value="BuPu">BuPu</option>
-                  <option value="PuRd">PuRd</option>
-                </optgroup>
-                <optgroup label="── Special ──">
-                  <option value="Sunset">Sunset</option>
-                  <option value="Sunrise">Sunrise</option>
-                  <option value="Bokeh">Bokeh</option>
-                  <option value="Category10">Category10</option>
-                </optgroup>
-              </select>
+              <div class="custom-select-wrapper" id="colormap-custom-select">
+                <button type="button" class="select custom-select-trigger" id="colormap-trigger" onclick="toggleColormapDropdown(event)">
+                  <span class="cm-swatch" id="colormap-trigger-swatch"></span>
+                  <span class="cm-name" id="colormap-trigger-name">Viridis</span>
+                  <span class="cm-chevron">▾</span>
+                </button>
+                <div class="custom-select-dropdown" id="colormap-dropdown">
+                  <!-- Options injected by JS -->
+                </div>
+              </div>
+              <input type="hidden" id="colormap-select" value="Viridis" />
             </div>
 
             <!-- Contour levels (shown only for Contour plot type) -->

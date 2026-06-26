@@ -572,6 +572,107 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* ── Custom Select / Colormap Picker ── */
+.custom-select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.custom-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font-family: inherit;
+}
+
+.custom-select-trigger.open {
+  border-color: var(--accent);
+}
+
+.cm-swatch {
+  display: inline-block;
+  width: 80px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.cm-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-chevron {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  transition: transform var(--transition);
+}
+
+.custom-select-trigger.open .cm-chevron {
+  transform: rotate(180deg);
+}
+
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+  padding: 4px 0;
+}
+
+.custom-select-dropdown.open {
+  display: block;
+  animation: dropdownFadeIn 0.15s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cm-optgroup-label {
+  padding: 6px 10px 2px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.cm-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  transition: background var(--transition);
+}
+
+.cm-option:hover {
+  background: var(--bg-hover);
+}
+
+.cm-option.selected {
+  background: var(--bg-active);
+  color: var(--accent);
+  font-weight: 500;
+}
+
 /* ── Dim Sliders ── */
 .dim-slider-group {
   background: var(--bg-base);
