@@ -638,8 +638,15 @@ body {
 }
 
 @keyframes dropdownFadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cm-optgroup-label {
@@ -1679,4 +1686,118 @@ body {
 .btn-icon {
   padding: 7px 9px;
   font-size: 0.9rem;
+}
+
+/* ── Location Series Floating Window ── */
+.loc-win {
+  position: fixed;
+  bottom: 40px;
+  right: 32px;
+  width: 520px;
+  min-width: 320px;
+  min-height: 280px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 48px rgba(15, 23, 42, 0.18), 0 2px 12px rgba(15, 23, 42, 0.10);
+  display: flex;
+  flex-direction: column;
+  z-index: 500;
+  overflow: hidden;
+  animation: winPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  resize: both;
+  /* native resize as fallback */
+}
+
+@keyframes winPop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.loc-win.hidden {
+  display: none;
+}
+
+.loc-win-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 14px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(124, 58, 237, 0.04));
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.loc-win-header:active {
+  cursor: grabbing;
+}
+
+.loc-win-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.loc-win-title {
+  flex: 1;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loc-win-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.loc-win-chart {
+  flex: 1;
+  min-height: 220px;
+}
+
+/* Corner resize grip */
+.loc-win-resize {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(30, 40, 80, 0.15) 50%);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+/* Crosshair cursor on the main heatmap/contour plot when series mode active */
+.plotly-container.click-enabled .nsewdrag {
+  cursor: crosshair !important;
+}
+
+/* Inline loading overlay for the series floating window */
+.loc-win-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.loc-win-loading .spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 2.5px;
 }

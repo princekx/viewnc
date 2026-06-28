@@ -703,7 +703,7 @@ function coastlineTrace(data, color) {
     y: data.y,
     line: { color, width: 1 },
     showlegend: false,
-    hoverinfo: 'none',
+    hoverinfo: 'skip',   // 'skip' passes hover events through to the underlying data trace
     name: 'Coastlines',
   };
 }
@@ -802,7 +802,7 @@ async function render2D(data, meta, plotType, colormap) {
         fill: 'tozeroy',
         fillcolor: 'rgba(37,99,235,0.10)',
         showlegend: false,
-        hoverinfo: 'none',
+        hoverinfo: 'skip',
         name: '',
       },
       // The line itself
@@ -940,6 +940,7 @@ async function render2D(data, meta, plotType, colormap) {
   $('welcome-screen').classList.add('hidden');
   setPlotMode(true);
   $('plot-area').classList.remove('hidden');
+  clearLocSeries();  // Reset floating window on each new plot
 
   // Plotly needs a visible container on first render to size axes/colorbar correctly.
   await nextFrame();
@@ -957,8 +958,8 @@ async function render2D(data, meta, plotType, colormap) {
     const gd = $('plotly-div');
     const fl = gd._fullLayout;
     const actualAxisH = fl?.yaxis?._length;   // rendered axis height in px
-    const totalH = fl?.height;            // total figure height in px
-    const axisOffset = fl?.yaxis?._offset;   // px from bottom of paper to axis bottom
+    const totalH = fl?.height;                 // total figure height in px
+    const axisOffset = fl?.yaxis?._offset;     // px from bottom of paper to axis bottom
     if (actualAxisH && totalH && axisOffset != null) {
       const corrLen = actualAxisH / totalH;
       const corrY = (axisOffset + actualAxisH / 2) / totalH;
@@ -976,7 +977,255 @@ async function render2D(data, meta, plotType, colormap) {
       }
     }
   } catch (_) { /* best-effort */ }
+
+  // ── Click-to-series listener (only for 2D plot types) ────────────────────
+  if (plotType === 'heatmap' || plotType === 'contour') {
+    const plotDiv = $('plotly-div');
+    plotDiv.classList.add('click-enabled');
+    // Remove any previously bound listener to avoid stacking
+    plotDiv.removeAllListeners?.('plotly_click');
+    plotDiv.on('plotly_click', (eventData) => {
+      const pt = eventData.points?.[0];
+      if (!pt) return;
+      // Ignore coastline / marker scatter trace clicks
+      if (pt.data?.type === 'scatter') return;
+      renderLocSeries(pt.x, pt.y, meta, xVals, yVals);
+    });
+  } else {
+    $('plotly-div').classList.remove('click-enabled');
+  }
 }
+
+// ── Location Series Floating Window ──────────────────────────────────────────
+
+// Vivid, distinct colors for successive series (cycles after 10)
+const LOC_COLORS = [
+  '#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
+  '#0891b2', '#db2777', '#65a30d', '#ea580c', '#6366f1',
+];
+
+// Module-level state for the floating window
+const _locWin = {
+  traces: [],         // { x_val, y_val, color, label } per clicked location
+  axisName: null,
+  axisUnits: null,
+  units: null,
+  initialized: false, // has Plotly.newPlot been called yet?
+};
+
+function _ensureLocWin() {
+  $('loc-series-win').classList.remove('hidden');
+}
+
+async function renderLocSeries(xClick, yClick, meta, xVals, yVals) {
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  if (!cube) return;
+
+  // Snap to nearest grid value
+  const snapX = xVals.reduce((a, b) => Math.abs(b - xClick) < Math.abs(a - xClick) ? b : a, xVals[0]);
+  const snapY = yVals.reduce((a, b) => Math.abs(b - yClick) < Math.abs(a - yClick) ? b : a, yVals[0]);
+
+  const color = LOC_COLORS[_locWin.traces.length % LOC_COLORS.length];
+  _ensureLocWin();
+
+  const xU = meta.x.units ? ` ${meta.x.units}` : '';
+  const yU = meta.y?.units ? ` ${meta.y.units}` : '';
+  $('loc-win-title').textContent =
+    `${cube.name}  ·  fetching (${snapX.toFixed(2)}, ${snapY.toFixed(2)})…`;
+
+  let result;
+  showLoading(`Loading series at (${snapX.toFixed(2)}, ${snapY.toFixed(2)})…`);
+  try {
+    result = await apiFetch('/api/location_series', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cube_index: STATE.selectedIdx,
+        x_val: snapX,
+        y_val: snapY,
+        constraints: STATE.constraints,
+      }),
+    });
+  } catch (err) {
+    hideLoading();
+    $('loc-win-title').textContent = `Error: ${err.message}`;
+    return;
+  }
+  hideLoading();
+
+
+  // Store axis metadata on first fetch (shared across all traces)
+  if (_locWin.traces.length === 0) {
+    _locWin.axisName = result.axis_name ?? 'index';
+    _locWin.axisUnits = result.axis_units ?? '';
+    _locWin.units = result.units ?? '';
+  }
+
+  const axisName = _locWin.axisName;
+  const axisUnits = _locWin.axisUnits ? ` (${_locWin.axisUnits})` : '';
+  const label = `(${result.x_val.toFixed(2)}${xU}, ${result.y_val.toFixed(2)}${yU})`;
+
+  const newTrace = {
+    type: 'scatter',
+    mode: 'lines+markers',
+    x: result.axis_values,
+    y: result.values,
+    name: label,
+    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+    marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
+    hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${_locWin.units}<extra></extra>`,
+  };
+
+  if (!_locWin.initialized) {
+    Plotly.newPlot('loc-series-div', [newTrace], _locWinLayout(axisName, axisUnits, _locWin.units), {
+      responsive: true, displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+    });
+    _locWin.initialized = true;
+  } else {
+    Plotly.addTraces('loc-series-div', newTrace);
+  }
+
+  _addClickMarker(snapX, snapY, color);
+  _locWin.traces.push({ x_val: snapX, y_val: snapY, color, label });
+
+  $('loc-win-title').textContent =
+    `${cube.name}  ·  ${_locWin.traces.length} location${_locWin.traces.length > 1 ? 's' : ''}  [click to add more]`;
+}
+
+function _locWinLayout(axisName, axisUnits, units) {
+  return {
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor: '#f8faff',
+    font: { family: 'Inter', color: '#475569', size: 11 },
+    legend: {
+      font: { size: 10, color: '#475569' },
+      bgcolor: 'rgba(255,255,255,0.85)',
+      bordercolor: 'rgba(30,40,80,0.12)',
+      borderwidth: 1,
+      x: 0, xanchor: 'left',
+      y: 1, yanchor: 'bottom',
+      orientation: 'h',
+    },
+    xaxis: {
+      title: { text: `${axisName}${axisUnits}`, font: { color: '#475569', size: 11 } },
+      gridcolor: 'rgba(30,40,80,0.07)',
+      linecolor: 'rgba(30,40,80,0.15)',
+      tickfont: { color: '#475569', size: 10 },
+      tickangle: -30,
+    },
+    yaxis: {
+      title: { text: units, font: { color: '#475569', size: 11 } },
+      gridcolor: 'rgba(30,40,80,0.07)',
+      linecolor: 'rgba(30,40,80,0.15)',
+      tickfont: { color: '#475569', size: 10 },
+    },
+    margin: { t: 40, b: 65, l: 60, r: 14 },
+    autosize: true,
+    showlegend: true,
+  };
+}
+
+function _addClickMarker(x, y, color) {
+  try {
+    Plotly.addTraces('plotly-div', {
+      type: 'scatter',
+      mode: 'markers',
+      x: [x], y: [y],
+      marker: { size: 9, color, symbol: 'cross-thin-open', line: { color, width: 2.5 } },
+      showlegend: false,
+      hoverinfo: 'skip',   // pass hover through to the heatmap beneath
+      name: '',
+    });
+  } catch (_) { }
+}
+
+function clearLocSeries() {
+  _locWin.traces = [];
+  _locWin.initialized = false;
+  _locWin.axisName = null;
+  _locWin.axisUnits = null;
+  _locWin.units = null;
+  try { Plotly.purge('loc-series-div'); } catch (_) { }
+  $('loc-win-title').textContent = 'Location Series';
+  try {
+    const gd = $('plotly-div');
+    if (gd.data) {
+      const idx = gd.data
+        .map((t, i) => (t.mode === 'markers' && t.showlegend === false && t.name === '') ? i : -1)
+        .filter(i => i >= 0)
+        .reverse();
+      idx.forEach(i => Plotly.deleteTraces('plotly-div', i));
+    }
+  } catch (_) { }
+}
+
+function closeLocSeries() {
+  $('loc-series-win').classList.add('hidden');
+}
+
+// ── Drag & resize for the floating window ────────────────────────────────────
+(function initLocWinDrag() {
+  let dragging = false, startX, startY, origLeft, origTop;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const handle = $('loc-win-drag-handle');
+    if (!handle) return;
+
+    handle.addEventListener('mousedown', e => {
+      if (e.target.closest('button')) return;
+      dragging = true;
+      const win = $('loc-series-win');
+      const rect = win.getBoundingClientRect();
+      win.style.right = 'auto';
+      win.style.bottom = 'auto';
+      win.style.left = rect.left + 'px';
+      win.style.top = rect.top + 'px';
+      origLeft = rect.left;
+      origTop = rect.top;
+      startX = e.clientX;
+      startY = e.clientY;
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const win = $('loc-series-win');
+      win.style.left = Math.max(0, origLeft + (e.clientX - startX)) + 'px';
+      win.style.top = Math.max(0, origTop + (e.clientY - startY)) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      dragging = false;
+      document.body.style.userSelect = '';
+    });
+
+    // Corner resize
+    const grip = $('loc-win-resize');
+    if (grip) {
+      let resizing = false, rsx, rsy, rw, rh;
+      grip.addEventListener('mousedown', e => {
+        resizing = true;
+        const win = $('loc-series-win');
+        rsx = e.clientX; rsy = e.clientY;
+        rw = win.offsetWidth; rh = win.offsetHeight;
+        e.preventDefault();
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', e => {
+        if (!resizing) return;
+        const win = $('loc-series-win');
+        win.style.width = Math.max(320, rw + (e.clientX - rsx)) + 'px';
+        win.style.height = Math.max(280, rh + (e.clientY - rsy)) + 'px';
+        Plotly.Plots.resize('loc-series-div');
+      });
+      document.addEventListener('mouseup', () => {
+        resizing = false;
+        document.body.style.userSelect = '';
+      });
+    }
+  });
+})();
 
 async function plotTimeSeries(idx) {
   showLoading('Computing spatial mean…');

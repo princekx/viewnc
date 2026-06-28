@@ -130,7 +130,8 @@
             <div class="colormap-row" id="colormap-row">
               <label class="field-label">Colormap</label>
               <div class="custom-select-wrapper" id="colormap-custom-select">
-                <button type="button" class="select custom-select-trigger" id="colormap-trigger" onclick="toggleColormapDropdown(event)">
+                <button type="button" class="select custom-select-trigger" id="colormap-trigger"
+                  onclick="toggleColormapDropdown(event)">
                   <span class="cm-swatch" id="colormap-trigger-swatch"></span>
                   <span class="cm-name" id="colormap-trigger-name">Viridis</span>
                   <span class="cm-chevron">▾</span>
@@ -245,7 +246,21 @@
         <div id="plotly-div" class="plotly-container"></div>
       </div>
 
-      <!-- Loading overlay -->
+      <!-- Location Series Floating Window -->
+      <div id="loc-series-win" class="loc-win hidden">
+        <div class="loc-win-header" id="loc-win-drag-handle">
+          <span class="loc-win-icon">📍</span>
+          <span id="loc-win-title" class="loc-win-title">Location Series</span>
+          <div class="loc-win-actions">
+            <button class="btn btn-ghost btn-sm" onclick="clearLocSeries()" title="Clear all series">⊘ Clear</button>
+            <button class="btn btn-ghost btn-sm" onclick="closeLocSeries()" title="Close">✕</button>
+          </div>
+        </div>
+        <div id="loc-series-div" class="loc-win-chart"></div>
+        <div class="loc-win-resize" id="loc-win-resize" title="Drag to resize"></div>
+      </div>
+
+
       <div id="loading-overlay" class="loading-overlay hidden">
         <div class="spinner"></div>
         <p id="loading-msg">Loading…</p>

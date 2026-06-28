@@ -206,6 +206,115 @@ def api_timeseries():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/location_series", methods=["POST"])
+def api_location_series():
+    """
+    Return a 1-D series at a clicked (x, y) grid location along all
+    non-spatial (extra) dimensions.
+
+    Body JSON:
+        cube_index  : int
+        x_val       : float  – clicked x coordinate value
+        y_val       : float  – clicked y coordinate value
+        constraints : dict   – same non-spatial constraints as /api/slice
+                               (used to fix any extra dims that are already
+                               collapsed; we'll iterate over the remaining one)
+    """
+    if _state["cubes"] is None:
+        return jsonify({"error": "No file loaded"}), 400
+
+    body = request.get_json(force=True)
+    cube_index = int(body.get("cube_index", 0))
+    x_val = float(body.get("x_val", 0))
+    y_val = float(body.get("y_val", 0))
+    constraints = body.get("constraints", {})
+
+    try:
+        cube = _state["cubes"][cube_index]
+        dim_coords = list(cube.dim_coords)
+
+        if cube.ndim < 2:
+            return jsonify({"error": "Cube has fewer than 2 dimensions"}), 400
+
+        # Identify spatial (last 2) and extra coords
+        spatial_coords = dim_coords[-2:]   # (y, x)
+        extra_coords   = dim_coords[:-2]   # everything before spatial
+
+        y_coord, x_coord = spatial_coords
+
+        # Find nearest grid indices for clicked location
+        xpts = x_coord.points
+        ypts = y_coord.points
+        xi = int(np.argmin(np.abs(xpts - x_val)))
+        yi = int(np.argmin(np.abs(ypts - y_val)))
+
+        # Build the series by iterating over ALL non-spatial points
+        # We ignore the range/processor constraints here – we want the full
+        # series at this location.
+        if not extra_coords:
+            # Already 2-D → return the single value as a length-1 series
+            val = float(np.ma.filled(cube.data[yi, xi], np.nan))
+            return jsonify({
+                "axis_name": "value",
+                "axis_values": [0],
+                "values": [None if np.isnan(val) else val],
+                "units": str(cube.units),
+                "name": cube.name(),
+                "x_val": float(xpts[xi]),
+                "y_val": float(ypts[yi]),
+            })
+
+        # One or more extra dimensions – use the first non-spatial dim as the
+        # series axis and take the midpoint of any others.
+        series_coord = extra_coords[0]
+        fixed_coords = extra_coords[1:]
+
+        # Fix remaining extra coords at their midpoint
+        sliced = cube
+        for fc in fixed_coords:
+            mid = len(fc.points) // 2
+            sliced = sliced[mid]
+
+        # Now sliced has shape (n_series, ny, nx)
+        n = len(series_coord.points)
+        series_vals = []
+        for i in range(n):
+            v = sliced[i].data
+            if hasattr(v, '__getitem__'):
+                v = float(np.ma.filled(np.atleast_1d(v)[yi, xi], np.nan))
+            else:
+                v = float(v)
+            series_vals.append(None if np.isnan(v) else v)
+
+        # Format axis labels (time-aware)
+        from viewnc.iris_loader import _is_time_coord, _fmt_date
+        if _is_time_coord(series_coord):
+            try:
+                axis_vals = [_fmt_date(series_coord.units.num2date(p))
+                             for p in series_coord.points]
+            except Exception:
+                axis_vals = series_coord.points.tolist()
+        else:
+            axis_vals = series_coord.points.tolist()
+
+        return jsonify({
+            "axis_name": series_coord.name(),
+            "axis_units": str(series_coord.units),
+            "axis_values": axis_vals,
+            "values": series_vals,
+            "units": str(cube.units),
+            "name": cube.name(),
+            "x_val": float(xpts[xi]),
+            "y_val": float(ypts[yi]),
+        })
+
+    except Exception as exc:
+        logger.exception("Location series failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+
+
 # ── Coastlines ───────────────────────────────────────────────────────────────
 
 _coastline_cache: dict = {}  # keyed by resolution string
