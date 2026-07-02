@@ -323,8 +323,6 @@ async function loadFile() {
 
     // Auto-expand Variables panel so the user can see what loaded
     expandPanel('panel-vars');
-    // Open the Plot Type panel so the Plot button is visible
-    expandPanel('panel-plot');
 
     setStatus(`${data.cubes.length} cube(s) loaded`, 'ok');
   } catch (err) {
@@ -359,7 +357,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       $('plot-area').classList.add('hidden');
       $('plot-btn').disabled = true;
       expandPanel('panel-vars');
-      expandPanel('panel-plot');
       setStatus(`${data.cubes.length} cube(s) loaded`, 'ok');
     }
   } catch (_) {
