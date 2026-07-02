@@ -145,7 +145,7 @@ def api_load():
 def api_metadata():
     if _state["metadata"] is None:
         return jsonify({"error": "No file loaded"}), 400
-    return jsonify({"cubes": _state["metadata"]})
+    return jsonify({"cubes": _state["metadata"], "filepath": _state["filepath"]})
 
 
 @app.route("/api/slice", methods=["POST"])

@@ -338,6 +338,35 @@ async function loadFile() {
 // Allow Enter key in filepath input
 $('filepath-input').addEventListener('keydown', e => { if (e.key === 'Enter') loadFile(); });
 
+// ── Auto-load pre-loaded file (supplied via CLI) ──────────────────────────────
+// If the server already has a file in _state (from the --filepath CLI arg),
+// /api/metadata returns it immediately.  We check on page load and populate
+// the UI without requiring the user to manually click "Load".
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const data = await apiFetch('/api/metadata');
+    if (data && data.cubes && data.cubes.length > 0) {
+      if (data.filepath) {
+        $('filepath-input').value = data.filepath;
+      }
+      STATE.cubes = data.cubes;
+      STATE.selectedIdx = null;
+      STATE.constraints = {};
+      renderVarList();
+      renderCubeCards();
+      $('welcome-screen').classList.add('hidden');
+      $('cube-info').classList.remove('hidden');
+      $('plot-area').classList.add('hidden');
+      $('plot-btn').disabled = true;
+      expandPanel('panel-vars');
+      expandPanel('panel-plot');
+      setStatus(`${data.cubes.length} cube(s) loaded`, 'ok');
+    }
+  } catch (_) {
+    // No file pre-loaded – stay on welcome screen (expected without a CLI arg)
+  }
+});
+
 // Show/hide contour-levels-row based on selected plot type
 document.querySelectorAll('input[name="plot-type"]').forEach(radio => {
   radio.addEventListener('change', () => {
