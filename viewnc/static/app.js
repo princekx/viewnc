@@ -1091,19 +1091,40 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals) {
   const axisUnits = _locWin.axisUnits ? ` (${_locWin.axisUnits})` : '';
   const label = `(${result.x_val.toFixed(2)}${xU}, ${result.y_val.toFixed(2)}${yU})`;
 
-  const newTrace = {
-    type: 'scatter',
-    mode: 'lines+markers',
-    x: result.axis_values,
-    y: result.values,
-    name: label,
-    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
-    marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
-    hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${_locWin.units}<extra></extra>`,
-  };
+  // Detect vertical-profile axes (pressure, level, height, …) so we render
+  // them in the conventional scientific orientation: axis on y (inverted for
+  // pressure), value on x.
+  const _isPressureLike = n => /pressure|level|plev|height|altitude|depth/i.test(n || '');
+  const isVertProfile = _isPressureLike(axisName) && typeof result.axis_values[0] === 'number';
+
+  let newTrace;
+  if (isVertProfile) {
+    newTrace = {
+      type: 'scatter',
+      mode: 'lines+markers',
+      x: result.values,
+      y: result.axis_values,
+      name: label,
+      line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+      marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
+      hovertemplate: `<b>${label}</b><br>${axisName}: %{y}<br>Value: %{x:.4g} ${_locWin.units}<extra></extra>`,
+    };
+  } else {
+    newTrace = {
+      type: 'scatter',
+      mode: 'lines+markers',
+      x: result.axis_values,
+      y: result.values,
+      name: label,
+      line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+      marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
+      hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${_locWin.units}<extra></extra>`,
+    };
+  }
 
   if (!_locWin.initialized) {
-    Plotly.newPlot('loc-series-div', [newTrace], _locWinLayout(axisName, axisUnits, _locWin.units), {
+    Plotly.newPlot('loc-series-div', [newTrace],
+      _locWinLayout(axisName, axisUnits, _locWin.units, isVertProfile), {
       responsive: true, displaylogo: false,
       modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
     });
@@ -1119,7 +1140,11 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals) {
     `${cube.name}  ·  ${_locWin.traces.length} location${_locWin.traces.length > 1 ? 's' : ''}  [click to add more]`;
 }
 
-function _locWinLayout(axisName, axisUnits, units) {
+function _locWinLayout(axisName, axisUnits, units, isVertProfile = false) {
+  // For vertical profiles: series axis (pressure/level) goes on y; value on x.
+  // Pressure increases downward, so invert the y-axis.
+  const xTitle = isVertProfile ? units : `${axisName}${axisUnits}`;
+  const yTitle = isVertProfile ? `${axisName}${axisUnits}` : units;
   return {
     paper_bgcolor: '#ffffff',
     plot_bgcolor: '#f8faff',
@@ -1134,17 +1159,19 @@ function _locWinLayout(axisName, axisUnits, units) {
       orientation: 'h',
     },
     xaxis: {
-      title: { text: `${axisName}${axisUnits}`, font: { color: '#475569', size: 11 } },
+      title: { text: xTitle, font: { color: '#475569', size: 11 } },
       gridcolor: 'rgba(30,40,80,0.07)',
       linecolor: 'rgba(30,40,80,0.15)',
       tickfont: { color: '#475569', size: 10 },
-      tickangle: -30,
+      tickangle: isVertProfile ? 0 : -30,
     },
     yaxis: {
-      title: { text: units, font: { color: '#475569', size: 11 } },
+      title: { text: yTitle, font: { color: '#475569', size: 11 } },
       gridcolor: 'rgba(30,40,80,0.07)',
       linecolor: 'rgba(30,40,80,0.15)',
       tickfont: { color: '#475569', size: 10 },
+      // Invert y so high pressure (surface) is at the bottom
+      autorange: isVertProfile ? 'reversed' : true,
     },
     margin: { t: 40, b: 65, l: 60, r: 14 },
     autosize: true,

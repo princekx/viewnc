@@ -264,16 +264,26 @@ def api_location_series():
                 "y_val": float(ypts[yi]),
             })
 
-        # One or more extra dimensions – use the first non-spatial dim as the
-        # series axis and take the midpoint of any others.
-        series_coord = extra_coords[0]
-        fixed_coords = extra_coords[1:]
+        # Use the dim immediately outside the spatial axes as the series axis.
+        # e.g. for (time, pressure, lat, lon): series=pressure, fixed=[time].
+        # This gives a vertical/level profile when clicking a 4-D cube, which
+        # is more useful than iterating over time at a fixed level.
+        series_coord = extra_coords[-1]
+        fixed_coords = extra_coords[:-1]
 
-        # Fix remaining extra coords at their midpoint
+        # Fix outer dims at the user's currently selected slider index.
+        # constraints[name] = {"range": [lo, hi], "processor": ..., "value": ...}
+        # We use the lo index so we honour exactly the step the user has chosen.
         sliced = cube
         for fc in fixed_coords:
-            mid = len(fc.points) // 2
-            sliced = sliced[mid]
+            c_spec = constraints.get(fc.name, {})
+            lo = (c_spec.get("range") or [None])[0]
+            n_pts = len(fc.points)
+            if lo is not None and 0 <= int(lo) < n_pts:
+                idx = int(lo)
+            else:
+                idx = n_pts // 2          # fall back to midpoint
+            sliced = sliced[idx]
 
         # Now sliced has shape (n_series, ny, nx)
         n = len(series_coord.points)
