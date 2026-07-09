@@ -799,6 +799,23 @@ async function render2D(data, meta, plotType, colormap) {
     symZmax = absMax;
   }
 
+  // ── Marginal profiles ─────────────────────────────────────────────────
+  // Compute row/column means from the raw 2-D data matrix (client-side, no API call)
+  const showMarginals = ($('marginal-toggle')?.checked ?? false)
+                         && (plotType === 'heatmap' || plotType === 'contour');
+
+  // Zonal mean: average over all longitudes for each latitude row
+  const zonalMean = data.map(row => {
+    const v = row.filter(x => x !== null && isFinite(x));
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  });
+
+  // Meridional mean: average over all latitudes for each longitude column
+  const meridionalMean = xVals.map((_, j) => {
+    const v = data.map(r => r[j]).filter(x => x !== null && isFinite(x));
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  });
+
   let traces;
   if (plotType === 'contour') {
     const ncontours = parseInt($('contour-levels')?.value ?? '10', 10);
@@ -1008,6 +1025,76 @@ async function render2D(data, meta, plotType, colormap) {
     height: getPlotHeight(),
   };
 
+  // ── Marginal profile subplot layout injection ────────────────────────
+  if (showMarginals) {
+    // Domain grid:
+    //  Main heatmap:   x [0, 0.73]  y [0.23, 1.0]
+    //  Right panel:    x [0.76, 1.0] y [0.23, 1.0]   ← zonal mean
+    //  Bottom panel:   x [0, 0.73]  y [0, 0.20]      ← meridional mean
+    const MX_END   = 0.73,  SX_START = 0.76;
+    const MY_START = 0.23,  SY_END   = 0.20;
+    const units    = meta.units || '';
+    const axStyle  = { gridcolor:'rgba(30,40,80,0.07)', linecolor:'rgba(30,40,80,0.15)',
+                       tickfont: { color:'#475569', size:9 } };
+
+    layout.xaxis.domain = [0, MX_END];
+    layout.yaxis.domain = [MY_START, 1.0];
+    // Disable scaleanchor — incompatible with explicit domain layout
+    delete layout.yaxis.scaleanchor;
+    delete layout.yaxis.scaleratio;
+    delete layout.yaxis.constrain;
+
+    // Right panel (zonal mean: value on x, latitude on y, shares y with main)
+    layout.xaxis2 = { ...axStyle, domain:[SX_START, 1.0],
+      title:{ text:`Zonal mean ${units}`, font:{color:'#475569',size:9} },
+      zeroline:true, zerolinecolor:'rgba(30,40,80,0.15)', zerolinewidth:1 };
+    layout.yaxis2 = { domain:[MY_START, 1.0], matches:'y',
+      showticklabels:false, showgrid:false, anchor:'x2' };
+
+    // Bottom panel (meridional mean: longitude on x, value on y, shares x with main)
+    layout.xaxis3 = { domain:[0, MX_END], matches:'x',
+      showticklabels:false, showgrid:false, anchor:'y3' };
+    layout.yaxis3 = { ...axStyle, domain:[0, SY_END],
+      title:{ text:`Meridional mean ${units}`, font:{color:'#475569',size:9} },
+      zeroline:true, zerolinecolor:'rgba(30,40,80,0.15)', zerolinewidth:1 };
+
+    // Reposition colorbar to fit between main plot and right panel
+    traces.forEach(t => { if (t.colorbar) {
+      t.colorbar.x = MX_END + 0.005;
+      t.colorbar.xpad = 2;
+      // Reset len/y — domain layout changes internal pixel geometry
+      t.colorbar.lenmode = 'fraction';
+      t.colorbar.len     = 1.0 - MY_START;  // rough estimate; correction runs below
+      t.colorbar.y       = (MY_START + 1.0) / 2;
+    }});
+
+    layout.margin = { t:50, b:50, l:72, r:12 };
+
+    // Zonal mean trace (right panel)
+    traces.push({
+      type:'scatter', mode:'lines',
+      x: zonalMean, y: yVals,
+      xaxis:'x2', yaxis:'y2',
+      line:{ color:'#2563eb', width:1.8, shape:'linear' },
+      fill:'tozerox', fillcolor:'rgba(37,99,235,0.08)',
+      showlegend:false,
+      hovertemplate:`${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Zonal ̅: %{x:.4g} ${units}<extra>Zonal mean</extra>`,
+      name:'Zonal mean',
+    });
+
+    // Meridional mean trace (bottom panel)
+    traces.push({
+      type:'scatter', mode:'lines',
+      x: xVals, y: meridionalMean,
+      xaxis:'x3', yaxis:'y3',
+      line:{ color:'#dc2626', width:1.8, shape:'linear' },
+      fill:'tozeroy', fillcolor:'rgba(220,38,38,0.08)',
+      showlegend:false,
+      hovertemplate:`${meta.x.name}: %{x:.2f}<br>Merid. ̅: %{y:.4g} ${units}<extra>Meridional mean</extra>`,
+      name:'Meridional mean',
+    });
+  }
+
   const config = {
     responsive: true,
     displaylogo: false,
@@ -1035,33 +1122,37 @@ async function render2D(data, meta, plotType, colormap) {
   }
 
   // ── Post-render colorbar correction ─────────────────────────────────────────
+  // Skipped when marginal panels are on (domain layout changes internal geometry).
   // When scaleanchor is active (geographic plots), Plotly compresses the axis
   // area to maintain aspect ratio.  Read the actual rendered axis pixel height
   // and restyle the colorbar so it matches exactly.
-  await nextFrame();
+  if (!showMarginals) await nextFrame();
   try {
-    const gd = $('plotly-div');
-    const fl = gd._fullLayout;
-    const actualAxisH = fl?.yaxis?._length;   // rendered axis height in px
-    const totalH = fl?.height;                 // total figure height in px
-    const axisOffset = fl?.yaxis?._offset;     // px from bottom of paper to axis bottom
-    if (actualAxisH && totalH && axisOffset != null) {
-      const corrLen = actualAxisH / totalH;
-      const corrY = (axisOffset + actualAxisH / 2) / totalH;
-      const styleUpdate = {};
-      const traceIndices = [];
-      traces.forEach((t, i) => {
-        if (t.colorbar) {
-          styleUpdate[`colorbar.len`] = corrLen;
-          styleUpdate[`colorbar.y`] = corrY;
-          traceIndices.push(i);
+    if (!showMarginals) {
+      const gd = $('plotly-div');
+      const fl = gd._fullLayout;
+      const actualAxisH = fl?.yaxis?._length;   // rendered axis height in px
+      const totalH = fl?.height;                 // total figure height in px
+      const axisOffset = fl?.yaxis?._offset;     // px from bottom of paper to axis bottom
+      if (actualAxisH && totalH && axisOffset != null) {
+        const corrLen = actualAxisH / totalH;
+        const corrY = (axisOffset + actualAxisH / 2) / totalH;
+        const styleUpdate = {};
+        const traceIndices = [];
+        traces.forEach((t, i) => {
+          if (t.colorbar) {
+            styleUpdate[`colorbar.len`] = corrLen;
+            styleUpdate[`colorbar.y`] = corrY;
+            traceIndices.push(i);
+          }
+        });
+        if (traceIndices.length) {
+          Plotly.restyle('plotly-div', styleUpdate, traceIndices);
         }
-      });
-      if (traceIndices.length) {
-        Plotly.restyle('plotly-div', styleUpdate, traceIndices);
       }
     }
   } catch (_) { /* best-effort */ }
+
 
   // ── Click-to-series listener (only for 2D plot types) ────────────────────
   if (plotType === 'heatmap' || plotType === 'contour') {
