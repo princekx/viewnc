@@ -171,20 +171,6 @@
               </p>
             </div>
 
-            <!-- Marginal profiles toggle (heatmap + contour only) -->
-            <div class="option-row" id="marginal-row">
-              <input type="checkbox" id="marginal-toggle" class="toggle-input" />
-              <div class="option-row-top">
-                <label class="toggle-label" for="marginal-toggle">
-                  <span class="toggle-icon">📉</span>
-                  Marginal profiles
-                </label>
-                <label for="marginal-toggle" class="toggle-track">
-                  <span class="toggle-thumb"></span>
-                </label>
-              </div>
-              <p class="hint" style="margin:3px 0 0 0">Zonal &amp; meridional mean side panels</p>
-            </div>
 
             <div class="colormap-row hidden" id="contour-levels-row">
               <label class="field-label">Contour Levels</label>
@@ -288,6 +274,12 @@
             <div id="stats-masked-badge" class="stats-masked-badge"></div>
           </div>
           <div class="plot-toolbar-actions">
+            <!-- Marginal profiles toggle — re-plots immediately on change -->
+            <input type="checkbox" id="marginal-toggle"
+              style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+            <label class="btn btn-ghost btn-sm" id="marginal-label" for="marginal-toggle"
+              title="Toggle zonal &amp; meridional mean panels">📉 Marginals</label>
+            <span class="toolbar-sep"></span>
             <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇
               CSV</button>
             <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇
