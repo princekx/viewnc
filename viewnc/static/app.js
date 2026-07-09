@@ -788,6 +788,17 @@ async function render2D(data, meta, plotType, colormap) {
   const cbLen = plotAreaH / plotH;
   const cbY = (margin.b + plotAreaH / 2) / plotH;
 
+  // ── Symmetric colorbar ────────────────────────────────────────────────────
+  // When the toggle is on, zmin = -zmax = -max(|vmin|, |vmax|) so that the
+  // zero-crossing always maps to the mid-point of the colorscale.
+  const symmetric = $('symmetric-toggle')?.checked ?? false;
+  let symZmin, symZmax;
+  if (symmetric) {
+    const absMax = Math.max(Math.abs(meta.vmin ?? 0), Math.abs(meta.vmax ?? 1));
+    symZmin = -absMax;
+    symZmax = absMax;
+  }
+
   let traces;
   if (plotType === 'contour') {
     const ncontours = parseInt($('contour-levels')?.value ?? '10', 10);
@@ -806,7 +817,15 @@ async function render2D(data, meta, plotType, colormap) {
     let zmin = undefined;
     let zmax = undefined;
 
-    if (minVal !== null && maxVal !== null) {
+    if (symmetric) {
+      // Symmetric overrides manual min/max and resets contour levels
+      zmin = symZmin;
+      zmax = symZmax;
+      autocontour = false;
+      contourOpts.start = symZmin;
+      contourOpts.end   = symZmax;
+      contourOpts.size  = (symZmax - symZmin) / ncontours;
+    } else if (minVal !== null && maxVal !== null) {
       if (minVal < maxVal) {
         autocontour = false;
         contourOpts.start = minVal;
@@ -881,6 +900,8 @@ async function render2D(data, meta, plotType, colormap) {
       x: xVals,
       y: yVals,
       z: data,
+      zmin: symmetric ? symZmin : undefined,
+      zmax: symmetric ? symZmax : undefined,
       colorscale: bokehToPlotly(colormap),
       colorbar: {
         title: { text: cube.units, side: 'right', font: { color: '#475569', size: 11 } },

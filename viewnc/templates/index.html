@@ -155,7 +155,23 @@
               <input type="hidden" id="colormap-select" value="Viridis" />
             </div>
 
-            <!-- Contour levels (shown only for Contour plot type) -->
+            <!-- Symmetric ± colorbar toggle (heatmap + contour) -->
+            <div class="option-row" id="symmetric-row">
+              <input type="checkbox" id="symmetric-toggle" class="toggle-input" />
+              <div class="option-row-top">
+                <label class="toggle-label" for="symmetric-toggle">
+                  <span class="toggle-icon">⇄</span>
+                  Symmetric ± colorbar
+                </label>
+                <label for="symmetric-toggle" class="toggle-track">
+                  <span class="toggle-thumb"></span>
+                </label>
+              </div>
+              <p class="hint" style="margin:3px 0 0 0">Forces <strong>zmin = −zmax</strong> — ideal for anomaly fields
+              </p>
+            </div>
+
+
             <div class="colormap-row hidden" id="contour-levels-row">
               <label class="field-label">Contour Levels</label>
               <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
