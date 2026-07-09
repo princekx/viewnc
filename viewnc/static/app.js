@@ -1448,6 +1448,102 @@ function closePlot() {
 }
 function downloadPlot() { Plotly.downloadImage('plotly-div', { format: 'png', scale: 2, filename: 'viewnc_plot' }); }
 
+/** Trigger a browser download from a blob URL and clean up. */
+function _triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+/** Download the currently displayed 2-D slice as a CSV file. */
+async function exportCSV() {
+  if (STATE.selectedIdx === null) { alert('No variable selected.'); return; }
+  try {
+    const res = await fetch('/api/export/csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cube_index: STATE.selectedIdx, constraints: STATE.constraints }),
+    });
+    if (!res.ok) { const j = await res.json(); throw new Error(j.error || `HTTP ${res.status}`); }
+    const blob = await res.blob();
+    // Try to read the Content-Disposition header for the server-chosen filename
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : 'viewnc_export.csv';
+    _triggerDownload(blob, filename);
+  } catch (err) {
+    alert('CSV export failed: ' + err.message);
+  }
+}
+
+/** Download the currently displayed 2-D slice as a NetCDF file. */
+async function exportNetCDF() {
+  if (STATE.selectedIdx === null) { alert('No variable selected.'); return; }
+  try {
+    const res = await fetch('/api/export/netcdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cube_index: STATE.selectedIdx, constraints: STATE.constraints }),
+    });
+    if (!res.ok) { const j = await res.json(); throw new Error(j.error || `HTTP ${res.status}`); }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : 'viewnc_export.nc';
+    _triggerDownload(blob, filename);
+  } catch (err) {
+    alert('NetCDF export failed: ' + err.message);
+  }
+}
+
+/** Download all currently plotted location series as a multi-column CSV. */
+async function exportSeriesCSV() {
+  if (!_locWin.initialized || _locWin.traces.length === 0) {
+    alert('No location series to export. Click points on the heatmap first.');
+    return;
+  }
+  // Collect data from the Plotly figure
+  const gd = $('loc-series-div');
+  if (!gd || !gd.data || gd.data.length === 0) { alert('No series data found.'); return; }
+
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  const seriesPayload = gd.data.map((trace, i) => ({
+    label: trace.name || `series_${i}`,
+    axis_values: (trace.y && _locWin.axisName && /pressure|level|plev|height|altitude|depth/i.test(_locWin.axisName))
+      ? trace.y   // vertical profile: y = axis, x = values
+      : trace.x,
+    values: (trace.y && _locWin.axisName && /pressure|level|plev|height|altitude|depth/i.test(_locWin.axisName))
+      ? trace.x
+      : trace.y,
+  }));
+
+  try {
+    const res = await fetch('/api/export/series_csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        axis_name:  _locWin.axisName  ?? 'index',
+        axis_units: _locWin.axisUnits ?? '',
+        units:      _locWin.units     ?? '',
+        name:       cube?.name        ?? 'variable',
+        series:     seriesPayload,
+      }),
+    });
+    if (!res.ok) { const j = await res.json(); throw new Error(j.error || `HTTP ${res.status}`); }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : 'viewnc_series.csv';
+    _triggerDownload(blob, filename);
+  } catch (err) {
+    alert('Series CSV export failed: ' + err.message);
+  }
+}
+
 window.addEventListener('resize', () => {
   if ($('plot-area').classList.contains('hidden')) return;
   try {

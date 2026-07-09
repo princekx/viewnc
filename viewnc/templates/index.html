@@ -252,6 +252,10 @@
         <div class="plot-toolbar">
           <div id="plot-title-bar" class="plot-title-bar"></div>
           <div class="plot-toolbar-actions">
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇
+              CSV</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇
+              NetCDF</button>
             <button class="btn btn-ghost btn-sm" onclick="downloadPlot()">⬇ PNG</button>
             <button class="btn btn-ghost btn-sm" onclick="closePlot()">✕ Close</button>
           </div>
@@ -265,6 +269,8 @@
           <span class="loc-win-icon">📍</span>
           <span id="loc-win-title" class="loc-win-title">Location Series</span>
           <div class="loc-win-actions">
+            <button class="btn btn-ghost btn-sm" onclick="exportSeriesCSV()" title="Download series data as CSV">⬇
+              CSV</button>
             <button class="btn btn-ghost btn-sm" onclick="clearLocSeries()" title="Clear all series">⊘ Clear</button>
             <button class="btn btn-ghost btn-sm" onclick="closeLocSeries()" title="Close">✕</button>
           </div>
