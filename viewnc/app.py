@@ -264,25 +264,30 @@ def api_location_series():
                 "y_val": float(ypts[yi]),
             })
 
-        # Use the dim immediately outside the spatial axes as the series axis.
-        # e.g. for (time, pressure, lat, lon): series=pressure, fixed=[time].
-        # This gives a vertical/level profile when clicking a 4-D cube, which
-        # is more useful than iterating over time at a fixed level.
-        series_coord = extra_coords[-1]
-        fixed_coords = extra_coords[:-1]
+        # Choose the series axis.
+        # The frontend passes series_axis = coord name chosen by the user.
+        # Fall back to the innermost extra dim when no preference is given.
+        series_axis = body.get("series_axis") or None
+        if series_axis:
+            match = next((c for c in extra_coords if c.name() == series_axis), None)
+            series_coord = match if match else extra_coords[-1]
+        else:
+            series_coord = extra_coords[-1]
 
-        # Fix outer dims at the user's currently selected slider index.
+        # Fix every other extra dim at the user's currently selected slider index.
         # constraints[name] = {"range": [lo, hi], "processor": ..., "value": ...}
-        # We use the lo index so we honour exactly the step the user has chosen.
+        # Slice in the order dims appear in the cube so index arithmetic is correct.
         sliced = cube
-        for fc in fixed_coords:
-            c_spec = constraints.get(fc.name, {})
+        for fc in extra_coords:
+            if fc.name() == series_coord.name():
+                continue          # leave the series dim intact
+            c_spec = constraints.get(fc.name(), {})
             lo = (c_spec.get("range") or [None])[0]
             n_pts = len(fc.points)
             if lo is not None and 0 <= int(lo) < n_pts:
                 idx = int(lo)
             else:
-                idx = n_pts // 2          # fall back to midpoint
+                idx = n_pts // 2  # fall back to midpoint
             sliced = sliced[idx]
 
         # Now sliced has shape (n_series, ny, nx)

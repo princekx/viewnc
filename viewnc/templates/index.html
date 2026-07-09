@@ -84,6 +84,18 @@
             <span class="panel-chevron">▾</span>
           </div>
           <div class="panel-body" id="cube-shape-info"></div>
+
+          <!-- Click-series axis selector (shown only when ndim > 2) -->
+          <div class="colormap-row hidden" id="click-axis-row" style="padding:0 12px 12px">
+            <label class="field-label"
+              style="display:flex;align-items:center;gap:5px;border-top:1px solid var(--border);padding-top:10px">
+              <span>📍</span> Click series axis
+            </label>
+            <select id="click-axis-select" class="select select-sm" style="margin-top:4px">
+              <!-- Options injected by JS when a variable is selected -->
+            </select>
+          </div>
+
         </section>
 
         <!-- Dimension sliders -->
@@ -202,6 +214,7 @@
 
           </div>
         </section>
+
 
       </div>
 
