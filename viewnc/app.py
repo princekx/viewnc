@@ -386,6 +386,73 @@ def api_coastlines():
         return jsonify({"error": str(exc)}), 500
 
 
+# ── Statistics ───────────────────────────────────────────────────────────────
+
+@app.route("/api/stats", methods=["POST"])
+def api_stats():
+    """
+    Return descriptive statistics for the current 2-D slice.
+
+    Body JSON: same as /api/slice (cube_index, constraints).
+    Returns:
+        {
+          "mean": float, "std": float, "min": float, "max": float,
+          "median": float, "p5": float, "p95": float,
+          "count_valid": int, "count_total": int, "pct_masked": float,
+          "units": str, "name": str, "shape": [ny, nx]
+        }
+    """
+    if _state["cubes"] is None:
+        return jsonify({"error": "No file loaded"}), 400
+
+    body = request.get_json(force=True)
+    cube_index = int(body.get("cube_index", 0))
+    constraints = body.get("constraints", {})
+
+    try:
+        data, meta = extract_slice(_state["cubes"], cube_index, constraints)
+
+        flat = data.flatten()
+        valid = flat[~np.isnan(flat)]
+        total = int(flat.size)
+        n_valid = int(valid.size)
+        n_masked = total - n_valid
+
+        def _f(v):
+            """Return float or None for JSON safety."""
+            if v is None:
+                return None
+            v = float(v)
+            return None if (np.isnan(v) or np.isinf(v)) else v
+
+        if n_valid == 0:
+            stats = {k: None for k in ("mean", "std", "min", "max", "median", "p5", "p95")}
+        else:
+            stats = {
+                "mean":   _f(np.mean(valid)),
+                "std":    _f(np.std(valid)),
+                "min":    _f(np.min(valid)),
+                "max":    _f(np.max(valid)),
+                "median": _f(np.median(valid)),
+                "p5":     _f(np.percentile(valid, 5)),
+                "p95":    _f(np.percentile(valid, 95)),
+            }
+
+        stats.update({
+            "count_valid": n_valid,
+            "count_total": total,
+            "pct_masked":  _f(100.0 * n_masked / total) if total else 0.0,
+            "units":  meta.get("units", ""),
+            "name":   meta.get("name", ""),
+            "shape":  meta.get("shape", list(data.shape)),
+        })
+        return jsonify(stats)
+
+    except Exception as exc:
+        logger.exception("Stats failed")
+        return jsonify({"error": str(exc)}), 500
+
+
 # ── Export ───────────────────────────────────────────────────────────────────
 
 @app.route("/api/export/csv", methods=["POST"])

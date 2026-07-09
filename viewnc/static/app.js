@@ -999,6 +999,7 @@ async function render2D(data, meta, plotType, colormap) {
   setPlotMode(true);
   $('plot-area').classList.remove('hidden');
   clearLocSeries();  // Reset floating window on each new plot
+  $('stats-bar').classList.add('hidden');  // hide stale stats until fresh data arrives
 
   // Plotly needs a visible container on first render to size axes/colorbar correctly.
   await nextFrame();
@@ -1006,6 +1007,11 @@ async function render2D(data, meta, plotType, colormap) {
   await nextFrame();
   Plotly.relayout('plotly-div', { height: getPlotHeight() });
   Plotly.Plots.resize('plotly-div');
+
+  // Fetch and show statistics non-blocking (only for 2D plot types)
+  if (plotType === 'heatmap' || plotType === 'contour') {
+    fetchAndRenderStats();
+  }
 
   // ── Post-render colorbar correction ─────────────────────────────────────────
   // When scaleanchor is active (geographic plots), Plotly compresses the axis
@@ -1393,6 +1399,8 @@ async function plotTimeSeries(idx) {
     await nextFrame();
     Plotly.relayout('plotly-div', { height: getPlotHeight() });
     Plotly.Plots.resize('plotly-div');
+    // Time series: hide stats bar (slice stats don't apply to spatial-mean plots)
+    $('stats-bar').classList.add('hidden');
   } catch (err) {
     alert('Time series error: ' + err.message);
   } finally {
@@ -1444,9 +1452,86 @@ function closeModal(e) {
 // ── Plot utilities ────────────────────────────────────────────────────────────
 function closePlot() {
   $('plot-area').classList.add('hidden');
+  $('stats-bar').classList.add('hidden');
   setPlotMode(false);
 }
 function downloadPlot() { Plotly.downloadImage('plotly-div', { format: 'png', scale: 2, filename: 'viewnc_plot' }); }
+
+// ── Statistics bar ────────────────────────────────────────────────────────────
+
+/**
+ * Non-blocking fetch of slice statistics.  Populates the stats bar below the
+ * plot; silently swallows errors so it never disrupts the main render path.
+ */
+async function fetchAndRenderStats() {
+  if (STATE.selectedIdx === null) return;
+  try {
+    const s = await apiFetch('/api/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cube_index: STATE.selectedIdx, constraints: STATE.constraints }),
+    });
+    renderStatsBar(s);
+  } catch (_) {
+    // Stats are best-effort — don't break the UI on failure
+    $('stats-bar').classList.add('hidden');
+  }
+}
+
+/**
+ * Populate and reveal the stats bar with the server-computed statistics.
+ * @param {Object} s  Response from /api/stats
+ */
+function renderStatsBar(s) {
+  const bar = $('stats-bar');
+  const pills = $('stats-pills');
+  const badge = $('stats-masked-badge');
+  if (!bar || !pills || !badge) return;
+
+  /** Format a number with 4 significant figures, falling back to '—'. */
+  function fmt(v) {
+    if (v === null || v === undefined) return '—';
+    const abs = Math.abs(v);
+    if (abs === 0) return '0';
+    if (abs >= 1e4 || abs < 1e-3) return v.toExponential(3);
+    if (abs >= 100) return v.toFixed(2);
+    if (abs >= 10)  return v.toFixed(3);
+    return v.toPrecision(4);
+  }
+
+  const units = s.units ? ` ${s.units}` : '';
+  const PILLS = [
+    { key: 'min',    label: 'Min',    cls: 'pill-min'  },
+    { key: 'mean',   label: 'Mean',   cls: 'pill-mean' },
+    { key: 'median', label: 'Median', cls: ''          },
+    { key: 'max',    label: 'Max',    cls: 'pill-max'  },
+    { key: 'std',    label: 'Std',    cls: 'pill-std'  },
+    { key: 'p5',     label: 'P5',     cls: ''          },
+    { key: 'p95',    label: 'P95',    cls: ''          },
+  ];
+
+  pills.innerHTML = PILLS.map(p => `
+    <div class="stat-pill ${p.cls}" title="${p.label}: ${fmt(s[p.key])}${units}">
+      <span class="stat-pill-label">${p.label}</span>
+      <span class="stat-pill-value">${fmt(s[p.key])}</span>
+    </div>
+  `).join('');
+
+  // Coverage badge
+  const pct = s.pct_masked ?? 0;
+  const coverage = (100 - pct).toFixed(1);
+  const n = s.count_valid?.toLocaleString() ?? '?';
+  const total = s.count_total?.toLocaleString() ?? '?';
+  badge.textContent = `${coverage}% valid  (${n} / ${total})`;
+  badge.className = 'stats-masked-badge ' + (
+    pct === 0      ? 'badge-ok-cov' :
+    pct < 25       ? 'badge-warn-cov' :
+                     'badge-bad-cov'
+  );
+
+  bar.classList.remove('hidden');
+}
+
 
 /** Trigger a browser download from a blob URL and clean up. */
 function _triggerDownload(blob, filename) {

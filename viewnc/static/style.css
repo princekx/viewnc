@@ -1801,3 +1801,106 @@ body {
   height: 28px;
   border-width: 2.5px;
 }
+
+/* ── Statistics bar (now inline in the plot toolbar) ───────────────────────── */
+.stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;               /* fills the space between the title and the action buttons */
+  min-width: 0;          /* allow flex children to shrink */
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+}
+
+/* Thin vertical rule to visually separate from the plot title */
+.stats-bar-sep {
+  display: block;
+  width: 1px;
+  height: 18px;
+  background: var(--border-bright);
+  margin: 0 4px 0 8px;
+  flex-shrink: 0;
+}
+
+/* Row of individual stat pill cards */
+.stats-pills {
+  display: flex;
+  flex-wrap: nowrap;     /* single line in the toolbar */
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.stats-pills::-webkit-scrollbar { display: none; }
+
+/* Single stat pill – compact to fit toolbar height */
+.stat-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 9px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-width: 58px;
+  flex-shrink: 0;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.stat-pill:hover {
+  border-color: var(--border-bright);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+}
+
+.stat-pill-label {
+  font-size: 0.54rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.stat-pill-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* Colour accents on specific pills */
+.stat-pill.pill-min  .stat-pill-value { color: #0284c7; }
+.stat-pill.pill-max  .stat-pill-value { color: #dc2626; }
+.stat-pill.pill-mean .stat-pill-value { color: var(--accent); }
+.stat-pill.pill-std  .stat-pill-value { color: var(--accent2); }
+
+/* Masked-data coverage badge */
+.stats-masked-badge {
+  font-size: 0.64rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.stats-masked-badge.badge-ok-cov {
+  background: rgba(5, 150, 105, 0.10);
+  color: var(--accent-green);
+  border-color: rgba(5, 150, 105, 0.25);
+}
+
+.stats-masked-badge.badge-warn-cov {
+  background: rgba(217, 119, 6, 0.12);
+  color: var(--accent-orange);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+.stats-masked-badge.badge-bad-cov {
+  background: rgba(220, 38, 38, 0.10);
+  color: var(--accent-red);
+  border-color: rgba(220, 38, 38, 0.22);
+}

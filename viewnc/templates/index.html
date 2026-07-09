@@ -251,6 +251,12 @@
       <div id="plot-area" class="plot-area hidden">
         <div class="plot-toolbar">
           <div id="plot-title-bar" class="plot-title-bar"></div>
+          <!-- Stats pills live inline in the toolbar, hidden until a 2D plot renders -->
+          <div id="stats-bar" class="stats-bar hidden">
+            <span class="stats-bar-sep"></span>
+            <div class="stats-pills" id="stats-pills"></div>
+            <div id="stats-masked-badge" class="stats-masked-badge"></div>
+          </div>
           <div class="plot-toolbar-actions">
             <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇
               CSV</button>
