@@ -252,12 +252,15 @@ def api_location_series():
         # We ignore the range/processor constraints here – we want the full
         # series at this location.
         if not extra_coords:
-            # Already 2-D → return the single value as a length-1 series
-            val = float(np.ma.filled(cube.data[yi, xi], np.nan))
+            # 2-D cube: plot a zonal profile (full longitude row at clicked latitude)
+            row = np.ma.filled(cube.data[yi, :], np.nan).astype(float)
+            lon_vals = xpts.tolist()
+            values = [None if np.isnan(v) else float(v) for v in row]
             return jsonify({
-                "axis_name": "value",
-                "axis_values": [0],
-                "values": [None if np.isnan(val) else val],
+                "axis_name": x_coord.name(),
+                "axis_units": str(x_coord.units),
+                "axis_values": lon_vals,
+                "values": values,
                 "units": str(cube.units),
                 "name": cube.name(),
                 "x_val": float(xpts[xi]),
