@@ -1145,7 +1145,23 @@ body {
 
 .plot-toolbar-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+.toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: var(--border-bright);
+  margin: 0 4px;
+  align-self: center;
+}
+
+#marginal-toggle:checked + #marginal-label {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .plotly-container {
@@ -1903,4 +1919,60 @@ body {
   background: rgba(220, 38, 38, 0.10);
   color: var(--accent-red);
   border-color: rgba(220, 38, 38, 0.22);
+}
+
+/* ── Plot Options Bar ── */
+.plot-options-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+  font-size: 0.8rem;
+}
+
+.option-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-opts-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-opts-group.hidden {
+  display: none !important;
+}
+
+.inline-input {
+  padding: 4px 6px;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.inline-input:focus {
+  border-color: var(--accent);
+}
+
+.label-text {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+#symmetric-toggle:checked + #symmetric-label,
+#marginal-toggle:checked + #marginal-label {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }

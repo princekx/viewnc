@@ -109,136 +109,11 @@
           <div class="panel-body" id="dim-sliders"></div>
         </section>
 
-        <!-- Plot type -->
-        <section class="panel collapsed" id="panel-plot">
-          <div class="panel-header" onclick="togglePanel('panel-plot')" title="Toggle panel">
-            <span class="panel-icon">📈</span>
-            <h2 class="panel-title">Plot Type</h2>
-            <span class="panel-chevron">▾</span>
-          </div>
-          <div class="panel-body">
-            <div class="radio-group" id="plot-type-group">
-              <label class="radio-label">
-                <input type="radio" name="plot-type" value="heatmap" checked id="radio-heatmap" />
-                <span class="radio-custom"></span>
-                Heatmap (2D)
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="plot-type" value="contour" id="radio-contour" />
-                <span class="radio-custom"></span>
-                Contour (2D)
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="plot-type" value="timeseries" id="radio-timeseries" />
-                <span class="radio-custom"></span>
-                Time Series
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="plot-type" value="line" id="radio-line" />
-                <span class="radio-custom"></span>
-                Line / Profile
-              </label>
-            </div>
-            <div class="colormap-row" id="colormap-row">
-              <label class="field-label">Colormap</label>
-              <div class="custom-select-wrapper" id="colormap-custom-select">
-                <button type="button" class="select custom-select-trigger" id="colormap-trigger"
-                  onclick="toggleColormapDropdown(event)">
-                  <span class="cm-swatch" id="colormap-trigger-swatch"></span>
-                  <span class="cm-name" id="colormap-trigger-name">Viridis</span>
-                  <span class="cm-chevron">▾</span>
-                </button>
-                <div class="custom-select-dropdown" id="colormap-dropdown">
-                  <!-- Options injected by JS -->
-                </div>
-              </div>
-              <input type="hidden" id="colormap-select" value="Viridis" />
-            </div>
 
-            <!-- Symmetric ± colorbar toggle (heatmap + contour) -->
-            <div class="option-row" id="symmetric-row">
-              <input type="checkbox" id="symmetric-toggle" class="toggle-input" />
-              <div class="option-row-top">
-                <label class="toggle-label" for="symmetric-toggle">
-                  <span class="toggle-icon">⇄</span>
-                  Symmetric ± colorbar
-                </label>
-                <label for="symmetric-toggle" class="toggle-track">
-                  <span class="toggle-thumb"></span>
-                </label>
-              </div>
-              <p class="hint" style="margin:3px 0 0 0">Forces <strong>zmin = −zmax</strong> — ideal for anomaly fields
-              </p>
-            </div>
-
-
-            <div class="colormap-row hidden" id="contour-levels-row">
-              <label class="field-label">Contour Levels</label>
-              <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-                <input type="number" id="contour-levels" class="filepath-input" value="10" min="3" max="50" step="1"
-                  style="width:72px;padding:5px 8px;font-size:0.78rem" />
-                <span style="font-size:0.7rem;color:var(--text-muted)">levels</span>
-              </div>
-              <label class="field-label" style="margin-top:8px">Contour Range (Min / Max)</label>
-              <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-                <input type="number" id="contour-min" class="filepath-input" placeholder="Auto" step="any"
-                  style="width:75px;padding:5px 8px;font-size:0.78rem" />
-                <span style="font-size:0.7rem;color:var(--text-muted)">to</span>
-                <input type="number" id="contour-max" class="filepath-input" placeholder="Auto" step="any"
-                  style="width:75px;padding:5px 8px;font-size:0.78rem" />
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:8px">
-                <input type="checkbox" id="contour-filled" checked style="accent-color:var(--accent);cursor:pointer" />
-                <label for="contour-filled" style="font-size:0.75rem;color:var(--text-secondary);cursor:pointer">
-                  Filled contours
-                </label>
-              </div>
-            </div>
-
-            <!-- Coastlines toggle -->
-            <div class="option-row" id="coastline-row">
-              <!-- Hidden checkbox is a direct sibling of .coastline-options so CSS ~ works -->
-              <input type="checkbox" id="coastline-toggle" class="toggle-input" />
-              <div class="option-row-top">
-                <label class="toggle-label" for="coastline-toggle">
-                  <span class="toggle-icon">🗺</span>
-                  Coastlines
-                </label>
-                <!-- toggle-track is also a label so clicking the pill works -->
-                <label for="coastline-toggle" class="toggle-track">
-                  <span class="toggle-thumb"></span>
-                </label>
-              </div>
-              <div class="coastline-options" id="coastline-options">
-                <label class="field-label">Resolution</label>
-                <select id="coastline-res" class="select select-sm">
-                  <option value="110m" selected>110m (fast)</option>
-                  <option value="50m">50m (medium)</option>
-                  <option value="10m">10m (fine)</option>
-                </select>
-                <label class="field-label" style="margin-top:6px">Line colour</label>
-                <select id="coastline-color" class="select select-sm">
-                  <option value="rgba(0,0,0,0.9)" selected>Black (default)</option>
-                  <option value="rgba(255,255,255,0.9)">White</option>
-                  <option value="rgba(220,220,220,0.8)">Light grey</option>
-                  <option value="rgba(40,40,40,0.85)">Dark grey</option>
-                  <option value="rgba(255,220,80,0.9)">Gold</option>
-                  <option value="rgba(255,80,80,0.9)">Red</option>
-                </select>
-              </div>
-            </div>
-
-          </div>
-        </section>
 
 
       </div>
 
-      <div class="sidebar-footer">
-        <button id="plot-btn" class="btn btn-accent btn-full" onclick="plotData()" disabled>
-          Plot
-        </button>
-      </div>
     </aside>
 
     <!-- ── MAIN CONTENT ── -->
@@ -274,20 +149,98 @@
             <div id="stats-masked-badge" class="stats-masked-badge"></div>
           </div>
           <div class="plot-toolbar-actions">
-            <!-- Marginal profiles toggle — re-plots immediately on change -->
-            <input type="checkbox" id="marginal-toggle"
-              style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
-            <label class="btn btn-ghost btn-sm" id="marginal-label" for="marginal-toggle"
-              title="Toggle zonal &amp; meridional mean panels">📉 Marginals</label>
-            <span class="toolbar-sep"></span>
-            <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇
-              CSV</button>
-            <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇
-              NetCDF</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇ CSV</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇ NetCDF</button>
             <button class="btn btn-ghost btn-sm" onclick="downloadPlot()">⬇ PNG</button>
             <button class="btn btn-ghost btn-sm" onclick="closePlot()">✕ Close</button>
           </div>
         </div>
+
+        <!-- Inline Plot Styling Options Bar -->
+        <div class="plot-options-bar" id="plot-options-bar">
+          <!-- Plot Button -->
+          <button id="plot-btn" class="btn btn-accent btn-sm" onclick="plotData()" disabled style="height:28px; padding:0 12px; font-weight:600; font-size:0.8rem">
+            ▶ Plot
+          </button>
+
+          <span class="toolbar-sep"></span>
+
+          <!-- Plot Type Dropdown -->
+          <div class="option-inline">
+            <span class="label-text">Plot Type</span>
+            <select id="plot-type-select" class="select select-sm" style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
+              <option value="heatmap" selected>Heatmap (2D)</option>
+              <option value="contour">Contour (2D)</option>
+              <option value="timeseries">Time Series</option>
+              <option value="line">Line / Profile</option>
+            </select>
+          </div>
+
+          <!-- Colormap Custom Dropdown -->
+          <div class="option-inline" id="colormap-inline-row">
+            <span class="label-text">Colormap</span>
+            <div class="custom-select-wrapper" id="colormap-custom-select" style="min-width:110px">
+              <button type="button" class="select custom-select-trigger" id="colormap-trigger"
+                onclick="toggleColormapDropdown(event)" style="height:28px; padding:0 8px; font-size:0.78rem">
+                <span class="cm-swatch" id="colormap-trigger-swatch"></span>
+                <span class="cm-name" id="colormap-trigger-name">Viridis</span>
+                <span class="cm-chevron">▾</span>
+              </button>
+              <div class="custom-select-dropdown" id="colormap-dropdown" style="top:30px">
+                <!-- Options injected by JS -->
+              </div>
+            </div>
+            <input type="hidden" id="colormap-select" value="Viridis" />
+          </div>
+
+          <span class="toolbar-sep" id="cmap-sep"></span>
+
+          <!-- Symmetric Toggle -->
+          <input type="checkbox" id="symmetric-toggle" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+          <label class="btn btn-ghost btn-sm" id="symmetric-label" for="symmetric-toggle" title="Symmetric ± colorbar (forces zmin = -zmax)">⇄ Symmetric</label>
+
+          <!-- Marginal Profiles Toggle -->
+          <input type="checkbox" id="marginal-toggle" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+          <label class="btn btn-ghost btn-sm" id="marginal-label" for="marginal-toggle" title="Toggle zonal &amp; meridional mean panels">📉 Marginals</label>
+
+          <!-- Coastlines Dropdown Options -->
+          <div class="option-inline" id="coastline-inline-row">
+            <span class="label-text">Coastlines</span>
+            <select id="coastline-res" class="select select-sm" style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
+              <option value="none">None</option>
+              <option value="110m">Low (110m)</option>
+              <option value="50m" selected>Mid (50m)</option>
+              <option value="10m">Fine (10m)</option>
+            </select>
+            <select id="coastline-color" class="select select-sm" style="width:90px; height:28px; padding:0 8px; font-size:0.78rem">
+              <option value="rgba(0,0,0,0.9)" selected>Black</option>
+              <option value="rgba(255,255,255,0.9)">White</option>
+              <option value="rgba(220,220,220,0.8)">Light grey</option>
+              <option value="rgba(40,40,40,0.85)">Dark grey</option>
+              <option value="rgba(255,220,80,0.9)">Gold</option>
+              <option value="rgba(255,80,80,0.9)">Red</option>
+            </select>
+          </div>
+
+          <span class="toolbar-sep" id="contour-sep" style="display:none"></span>
+
+          <!-- Inline Contour Options (only shown in Contour mode) -->
+          <div id="contour-inline-opts" class="inline-opts-group hidden">
+            <span class="label-text">Levels</span>
+            <input type="number" id="contour-levels" class="inline-input" value="10" min="3" max="50" style="width:42px; height:28px; text-align:center" />
+            
+            <span class="label-text" style="margin-left:4px">Range</span>
+            <input type="number" id="contour-min" class="inline-input" placeholder="Min" style="width:58px; height:28px" />
+            <span class="label-text">to</span>
+            <input type="number" id="contour-max" class="inline-input" placeholder="Max" style="width:58px; height:28px" />
+
+            <div style="display:flex;align-items:center;gap:4px;margin-left:4px">
+              <input type="checkbox" id="contour-filled" checked style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px" />
+              <label for="contour-filled" class="label-text" style="cursor:pointer;user-select:none">Filled</label>
+            </div>
+          </div>
+        </div>
+
         <div id="plotly-div" class="plotly-container"></div>
       </div>
 

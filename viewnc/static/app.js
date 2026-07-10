@@ -199,6 +199,11 @@ function selectColormap(name) {
   });
 
   closeColormapDropdown();
+
+  // Trigger re-plot if a plot is active
+  if (STATE.selectedIdx !== null && !$('plot-area').classList.contains('hidden')) {
+    plotData();
+  }
 }
 
 function toggleColormapDropdown(e) {
@@ -364,13 +369,59 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Show/hide contour-levels-row based on selected plot type
-document.querySelectorAll('input[name="plot-type"]').forEach(radio => {
-  radio.addEventListener('change', () => {
-    const isContour = $('radio-contour').checked;
-    $('contour-levels-row').classList.toggle('hidden', !isContour);
+function updateOptionsBarVisibility() {
+  const plotType = $('plot-type-select').value;
+  const is2D = plotType === 'heatmap' || plotType === 'contour';
+  const isContour = plotType === 'contour';
+
+  // Toggle visibility of colormap, symmetric, marginals, coastlines group
+  $('colormap-inline-row').classList.toggle('hidden', !is2D);
+  $('symmetric-label').classList.toggle('hidden', !is2D);
+  $('marginal-label').classList.toggle('hidden', !is2D);
+  $('coastline-inline-row').classList.toggle('hidden', !is2D);
+
+  // Coastlines color selector is only visible when coastlines are enabled
+  const showCoast = is2D && $('coastline-res').value !== 'none';
+  $('coastline-color').classList.toggle('hidden', !showCoast);
+
+  // Contour options display
+  $('contour-inline-opts').classList.toggle('hidden', !isContour);
+  $('contour-sep').style.display = isContour ? 'inline-block' : 'none';
+}
+
+function initPlotOptionsListeners() {
+  const triggerReplot = () => {
+    if (STATE.selectedIdx !== null && !$('plot-area').classList.contains('hidden') && !$('plotly-div').classList.contains('hidden')) {
+      plotData();
+    }
+  };
+
+  $('plot-type-select').addEventListener('change', () => {
+    updateOptionsBarVisibility();
+    triggerReplot();
   });
-});
+
+  $('coastline-res').addEventListener('change', () => {
+    updateOptionsBarVisibility();
+    triggerReplot();
+  });
+
+  // Toggles and select changes that trigger immediate replot
+  ['symmetric-toggle', 'marginal-toggle', 'coastline-color', 'contour-filled'].forEach(id => {
+    $(id).addEventListener('change', triggerReplot);
+  });
+
+  // Numeric inputs trigger replot on change (blur or enter key)
+  ['contour-levels', 'contour-min', 'contour-max'].forEach(id => {
+    $(id).addEventListener('change', triggerReplot);
+  });
+}
+
+// Initialize on script load
+updateOptionsBarVisibility();
+initPlotOptionsListeners();
+
+
 
 // ── Variable List ─────────────────────────────────────────────────────────────
 function renderVarList() {
@@ -412,6 +463,13 @@ function selectVar(idx) {
   const cube = STATE.cubes.find(c => c.index === idx) ?? STATE.cubes[idx];
   buildDimSliders(cube);
   renderCubeShapeInfo(cube);
+
+  // Show plot area card and option bar, but hide plot toolbar and plotly container
+  $('plot-area').classList.remove('hidden');
+  document.querySelector('.plot-toolbar').classList.add('hidden');
+  $('plotly-div').classList.add('hidden');
+  $('welcome-screen').classList.add('hidden');
+
   $('plot-btn').disabled = false;
 
   // Auto-enable coastlines when the plot axes look geographic
@@ -426,8 +484,8 @@ function selectVar(idx) {
  * look like longitude and latitude.
  */
 function autoSetCoastline(cube) {
-  const toggle = $('coastline-toggle');
-  if (!toggle) return;
+  const resSel = $('coastline-res');
+  if (!resSel) return;
   const dims = cube.dim_coords;
   // Spatial axes are always the last two dim_coords
   const xCoord = dims[dims.length - 1];
@@ -440,7 +498,8 @@ function autoSetCoastline(cube) {
   const ySig = (yCoord.name || '') + ' ' + (yCoord.units || '') + ' ' + (yCoord.standard_name || '');
 
   const isGeo = lonRe.test(xSig) && latRe.test(ySig);
-  toggle.checked = isGeo;
+  resSel.value = isGeo ? '50m' : 'none';
+  updateOptionsBarVisibility();
 }
 
 /**
@@ -717,7 +776,7 @@ function buildDimSliders(cube) {
 async function plotData() {
   if (STATE.selectedIdx === null) return;
 
-  const plotType = document.querySelector('input[name="plot-type"]:checked').value;
+  const plotType = $('plot-type-select').value;
   const colormap = $('colormap-select').value;
 
   if (plotType === 'timeseries') {
@@ -802,7 +861,7 @@ async function render2D(data, meta, plotType, colormap) {
   // ── Marginal profiles ─────────────────────────────────────────────────
   // Compute row/column means from the raw 2-D data matrix (client-side, no API call)
   const showMarginals = ($('marginal-toggle')?.checked ?? false)
-                         && (plotType === 'heatmap' || plotType === 'contour');
+    && (plotType === 'heatmap' || plotType === 'contour');
 
   // Zonal mean: average over all longitudes for each latitude row
   const zonalMean = data.map(row => {
@@ -840,8 +899,8 @@ async function render2D(data, meta, plotType, colormap) {
       zmax = symZmax;
       autocontour = false;
       contourOpts.start = symZmin;
-      contourOpts.end   = symZmax;
-      contourOpts.size  = (symZmax - symZmin) / ncontours;
+      contourOpts.end = symZmax;
+      contourOpts.size = (symZmax - symZmin) / ncontours;
     } else if (minVal !== null && maxVal !== null) {
       if (minVal < maxVal) {
         autocontour = false;
@@ -938,7 +997,7 @@ async function render2D(data, meta, plotType, colormap) {
   }
 
   // ── Coastline overlay ────────────────────────────────────────────────────
-  const showCoast = $('coastline-toggle').checked;
+  const showCoast = $('coastline-res').value !== 'none';
   if (showCoast && plotType !== 'line') {
     try {
       const res = $('coastline-res').value;
@@ -985,11 +1044,7 @@ async function render2D(data, meta, plotType, colormap) {
   const yIsLat = meta.y && /lat|degree/i.test(meta.y.name + ' ' + (meta.y.units || ''));
   const lockAspect = xIsLon && yIsLat && plotType !== 'line';
 
-  // Auto-enable coastlines if axes are geographic and user hasn't manually toggled off
-  if (xIsLon && yIsLat && plotType !== 'line') {
-    const toggle = $('coastline-toggle');
-    if (toggle && !toggle.checked) toggle.checked = true;
-  }
+
 
   const layout = {
     title: {
@@ -1031,11 +1086,26 @@ async function render2D(data, meta, plotType, colormap) {
     //  Main heatmap:   x [0, 0.73]  y [0.23, 1.0]
     //  Right panel:    x [0.76, 1.0] y [0.23, 1.0]   ← zonal mean
     //  Bottom panel:   x [0, 0.73]  y [0, 0.20]      ← meridional mean
-    const MX_END   = 0.73,  SX_START = 0.76;
-    const MY_START = 0.23,  SY_END   = 0.20;
-    const units    = meta.units || '';
-    const axStyle  = { gridcolor:'rgba(30,40,80,0.07)', linecolor:'rgba(30,40,80,0.15)',
-                       tickfont: { color:'#475569', size:9 } };
+    const MX_END = 0.73, SX_START = 0.76;
+    const MY_START = 0.23, SY_END = 0.20;
+    const units = meta.units || '';
+    const axStyle = {
+      gridcolor: 'rgba(30,40,80,0.07)', linecolor: 'rgba(30,40,80,0.15)',
+      tickfont: { color: '#475569', size: 9 }
+    };
+
+    // Compute data-dependent ranges for marginal plots to avoid forcing min to 0
+    const getRange = (arr) => {
+      const valid = arr.filter(v => v !== null && isFinite(v));
+      if (!valid.length) return [0, 1];
+      const min = Math.min(...valid);
+      const max = Math.max(...valid);
+      const span = max - min;
+      if (span === 0) return [min - 1, max + 1];
+      return [min - 0.05 * span, max + 0.05 * span];
+    };
+    const zonalRange = getRange(zonalMean);
+    const meridionalRange = getRange(meridionalMean);
 
     layout.xaxis.domain = [0, MX_END];
     layout.yaxis.domain = [MY_START, 1.0];
@@ -1045,53 +1115,65 @@ async function render2D(data, meta, plotType, colormap) {
     delete layout.yaxis.constrain;
 
     // Right panel (zonal mean: value on x, latitude on y, shares y with main)
-    layout.xaxis2 = { ...axStyle, domain:[SX_START, 1.0],
-      title:{ text:`Zonal mean ${units}`, font:{color:'#475569',size:9} },
-      zeroline:true, zerolinecolor:'rgba(30,40,80,0.15)', zerolinewidth:1 };
-    layout.yaxis2 = { domain:[MY_START, 1.0], matches:'y',
-      showticklabels:false, showgrid:false, anchor:'x2' };
+    layout.xaxis2 = {
+      ...axStyle, domain: [SX_START, 1.0],
+      title: { text: `Zonal mean ${units}`, font: { color: '#475569', size: 9 } },
+      zeroline: true, zerolinecolor: 'rgba(30,40,80,0.15)', zerolinewidth: 1,
+      range: zonalRange
+    };
+    layout.yaxis2 = {
+      domain: [MY_START, 1.0], matches: 'y',
+      showticklabels: false, showgrid: false, anchor: 'x2'
+    };
 
     // Bottom panel (meridional mean: longitude on x, value on y, shares x with main)
-    layout.xaxis3 = { domain:[0, MX_END], matches:'x',
-      showticklabels:false, showgrid:false, anchor:'y3' };
-    layout.yaxis3 = { ...axStyle, domain:[0, SY_END],
-      title:{ text:`Meridional mean ${units}`, font:{color:'#475569',size:9} },
-      zeroline:true, zerolinecolor:'rgba(30,40,80,0.15)', zerolinewidth:1 };
+    layout.xaxis3 = {
+      domain: [0, MX_END], matches: 'x',
+      showticklabels: false, showgrid: false, anchor: 'y3'
+    };
+    layout.yaxis3 = {
+      ...axStyle, domain: [0, SY_END],
+      title: { text: `Meridional mean ${units}`, font: { color: '#475569', size: 9 } },
+      zeroline: true, zerolinecolor: 'rgba(30,40,80,0.15)', zerolinewidth: 1,
+      range: meridionalRange
+    };
 
     // Reposition colorbar to fit between main plot and right panel
-    traces.forEach(t => { if (t.colorbar) {
-      t.colorbar.x = MX_END + 0.005;
-      t.colorbar.xpad = 2;
-      // Reset len/y — domain layout changes internal pixel geometry
-      t.colorbar.lenmode = 'fraction';
-      t.colorbar.len     = 1.0 - MY_START;  // rough estimate; correction runs below
-      t.colorbar.y       = (MY_START + 1.0) / 2;
-    }});
+    traces.forEach(t => {
+      if (t.colorbar) {
+        t.colorbar.x = MX_END + 0.005;
+        t.colorbar.xpad = 2;
+        // Reset len/y — domain layout changes internal pixel geometry
+        t.colorbar.lenmode = 'fraction';
+        t.colorbar.len = 1.0 - MY_START;  // rough estimate; correction runs below
+        t.colorbar.y = (MY_START + 1.0) / 2;
+      }
+    });
 
-    layout.margin = { t:50, b:50, l:72, r:12 };
+    layout.margin = { t: 50, b: 50, l: 72, r: 12 };
 
     // Zonal mean trace (right panel)
     traces.push({
-      type:'scatter', mode:'lines',
+      type: 'scatter', mode: 'lines',
       x: zonalMean, y: yVals,
-      xaxis:'x2', yaxis:'y2',
-      line:{ color:'#2563eb', width:1.8, shape:'linear' },
-      fill:'tozerox', fillcolor:'rgba(37,99,235,0.08)',
-      showlegend:false,
-      hovertemplate:`${(meta.y||{name:'y'}).name}: %{y:.2f}<br>Zonal ̅: %{x:.4g} ${units}<extra>Zonal mean</extra>`,
-      name:'Zonal mean',
+      xaxis: 'x2', yaxis: 'y2',
+      line: { color: '#2563eb', width: 1.8, shape: 'linear' },
+      fill: 'tozerox', fillcolor: 'rgba(37,99,235,0.08)',
+      showlegend: false,
+      hovertemplate: `${(meta.y || { name: 'y' }).name}: %{y:.2f}<br>Zonal ̅: %{x:.4g} ${units}<extra>Zonal mean</extra>`,
+      name: 'Zonal mean',
     });
 
     // Meridional mean trace (bottom panel)
     traces.push({
-      type:'scatter', mode:'lines',
+      type: 'scatter', mode: 'lines',
       x: xVals, y: meridionalMean,
-      xaxis:'x3', yaxis:'y3',
-      line:{ color:'#dc2626', width:1.8, shape:'linear' },
-      fill:'tozeroy', fillcolor:'rgba(220,38,38,0.08)',
-      showlegend:false,
-      hovertemplate:`${meta.x.name}: %{x:.2f}<br>Merid. ̅: %{y:.4g} ${units}<extra>Meridional mean</extra>`,
-      name:'Meridional mean',
+      xaxis: 'x3', yaxis: 'y3',
+      line: { color: '#dc2626', width: 1.8, shape: 'linear' },
+      fill: 'tozeroy', fillcolor: 'rgba(220,38,38,0.08)',
+      showlegend: false,
+      hovertemplate: `${meta.x.name}: %{x:.2f}<br>Merid. ̅: %{y:.4g} ${units}<extra>Meridional mean</extra>`,
+      name: 'Meridional mean',
     });
   }
 
@@ -1106,6 +1188,8 @@ async function render2D(data, meta, plotType, colormap) {
   $('welcome-screen').classList.add('hidden');
   setPlotMode(true);
   $('plot-area').classList.remove('hidden');
+  document.querySelector('.plot-toolbar').classList.remove('hidden');
+  $('plotly-div').classList.remove('hidden');
   clearLocSeries();  // Reset floating window on each new plot
   $('stats-bar').classList.add('hidden');  // hide stale stats until fresh data arrives
 
@@ -1504,6 +1588,8 @@ async function plotTimeSeries(idx) {
     $('plot-title-bar').textContent = `${result.name} — time series`;
     setPlotMode(true);
     $('plot-area').classList.remove('hidden');
+    document.querySelector('.plot-toolbar').classList.remove('hidden');
+    $('plotly-div').classList.remove('hidden');
     $('welcome-screen').classList.add('hidden');
 
     await nextFrame();
@@ -1563,9 +1649,16 @@ function closeModal(e) {
 
 // ── Plot utilities ────────────────────────────────────────────────────────────
 function closePlot() {
+  STATE.selectedIdx = null;
+  document.querySelectorAll('.var-item').forEach(el => el.classList.remove('selected'));
+  const sliders = $('dim-sliders');
+  if (sliders) sliders.innerHTML = '';
+  const cards = $('cube-cards');
+  if (cards) cards.innerHTML = '';
   $('plot-area').classList.add('hidden');
   $('stats-bar').classList.add('hidden');
   setPlotMode(false);
+  $('welcome-screen').classList.remove('hidden');
 }
 function downloadPlot() { Plotly.downloadImage('plotly-div', { format: 'png', scale: 2, filename: 'viewnc_plot' }); }
 
@@ -1607,19 +1700,19 @@ function renderStatsBar(s) {
     if (abs === 0) return '0';
     if (abs >= 1e4 || abs < 1e-3) return v.toExponential(3);
     if (abs >= 100) return v.toFixed(2);
-    if (abs >= 10)  return v.toFixed(3);
+    if (abs >= 10) return v.toFixed(3);
     return v.toPrecision(4);
   }
 
   const units = s.units ? ` ${s.units}` : '';
   const PILLS = [
-    { key: 'min',    label: 'Min',    cls: 'pill-min'  },
-    { key: 'mean',   label: 'Mean',   cls: 'pill-mean' },
-    { key: 'median', label: 'Median', cls: ''          },
-    { key: 'max',    label: 'Max',    cls: 'pill-max'  },
-    { key: 'std',    label: 'Std',    cls: 'pill-std'  },
-    { key: 'p5',     label: 'P5',     cls: ''          },
-    { key: 'p95',    label: 'P95',    cls: ''          },
+    { key: 'min', label: 'Min', cls: 'pill-min' },
+    { key: 'mean', label: 'Mean', cls: 'pill-mean' },
+    { key: 'median', label: 'Median', cls: '' },
+    { key: 'max', label: 'Max', cls: 'pill-max' },
+    { key: 'std', label: 'Std', cls: 'pill-std' },
+    { key: 'p5', label: 'P5', cls: '' },
+    { key: 'p95', label: 'P95', cls: '' },
   ];
 
   pills.innerHTML = PILLS.map(p => `
@@ -1636,9 +1729,9 @@ function renderStatsBar(s) {
   const total = s.count_total?.toLocaleString() ?? '?';
   badge.textContent = `${coverage}% valid  (${n} / ${total})`;
   badge.className = 'stats-masked-badge ' + (
-    pct === 0      ? 'badge-ok-cov' :
-    pct < 25       ? 'badge-warn-cov' :
-                     'badge-bad-cov'
+    pct === 0 ? 'badge-ok-cov' :
+      pct < 25 ? 'badge-warn-cov' :
+        'badge-bad-cov'
   );
 
   bar.classList.remove('hidden');
@@ -1723,11 +1816,11 @@ async function exportSeriesCSV() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        axis_name:  _locWin.axisName  ?? 'index',
+        axis_name: _locWin.axisName ?? 'index',
         axis_units: _locWin.axisUnits ?? '',
-        units:      _locWin.units     ?? '',
-        name:       cube?.name        ?? 'variable',
-        series:     seriesPayload,
+        units: _locWin.units ?? '',
+        name: cube?.name ?? 'variable',
+        series: seriesPayload,
       }),
     });
     if (!res.ok) { const j = await res.json(); throw new Error(j.error || `HTTP ${res.status}`); }
