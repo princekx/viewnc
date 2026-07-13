@@ -757,10 +757,10 @@ body {
 /* Dual slider track */
 .dual-slider-wrap {
   position: relative;
-  height: 20px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
+  padding: 2px 0;
 }
 
 .slider {
@@ -1158,7 +1158,7 @@ body {
   align-self: center;
 }
 
-#marginal-toggle:checked + #marginal-label {
+#marginal-toggle:checked+#marginal-label {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -1823,8 +1823,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;               /* fills the space between the title and the action buttons */
-  min-width: 0;          /* allow flex children to shrink */
+  flex: 1;
+  /* fills the space between the title and the action buttons */
+  min-width: 0;
+  /* allow flex children to shrink */
   overflow: hidden;
   animation: fadeIn 0.25s ease;
 }
@@ -1842,14 +1844,17 @@ body {
 /* Row of individual stat pill cards */
 .stats-pills {
   display: flex;
-  flex-wrap: nowrap;     /* single line in the toolbar */
+  flex-wrap: nowrap;
+  /* single line in the toolbar */
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
   min-width: 0;
 }
 
-.stats-pills::-webkit-scrollbar { display: none; }
+.stats-pills::-webkit-scrollbar {
+  display: none;
+}
 
 /* Single stat pill – compact to fit toolbar height */
 .stat-pill {
@@ -1887,10 +1892,21 @@ body {
 }
 
 /* Colour accents on specific pills */
-.stat-pill.pill-min  .stat-pill-value { color: #0284c7; }
-.stat-pill.pill-max  .stat-pill-value { color: #dc2626; }
-.stat-pill.pill-mean .stat-pill-value { color: var(--accent); }
-.stat-pill.pill-std  .stat-pill-value { color: var(--accent2); }
+.stat-pill.pill-min .stat-pill-value {
+  color: #0284c7;
+}
+
+.stat-pill.pill-max .stat-pill-value {
+  color: #dc2626;
+}
+
+.stat-pill.pill-mean .stat-pill-value {
+  color: var(--accent);
+}
+
+.stat-pill.pill-std .stat-pill-value {
+  color: var(--accent2);
+}
 
 /* Masked-data coverage badge */
 .stats-masked-badge {
@@ -1970,8 +1986,8 @@ body {
   font-weight: 500;
 }
 
-#symmetric-toggle:checked + #symmetric-label,
-#marginal-toggle:checked + #marginal-label {
+#symmetric-toggle:checked+#symmetric-label,
+#marginal-toggle:checked+#marginal-label {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);

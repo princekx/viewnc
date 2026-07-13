@@ -279,7 +279,8 @@ def api_location_series():
 
         # Fix every other extra dim at the user's currently selected slider index.
         # constraints[name] = {"range": [lo, hi], "processor": ..., "value": ...}
-        # Slice in the order dims appear in the cube so index arithmetic is correct.
+        # We must remove dims by their *current* position in the progressively-
+        # sliced cube, not always dim-0.  Build a full index tuple each time.
         sliced = cube
         for fc in extra_coords:
             if fc.name() == series_coord.name():
@@ -291,7 +292,16 @@ def api_location_series():
                 idx = int(lo)
             else:
                 idx = n_pts // 2  # fall back to midpoint
-            sliced = sliced[idx]
+            # Find which dimension fc currently occupies in the sliced cube
+            try:
+                dim_pos = sliced.coord_dims(fc.name())[0]
+            except Exception:
+                continue  # coord no longer present, skip
+            index_tuple = tuple(
+                idx if i == dim_pos else slice(None)
+                for i in range(sliced.ndim)
+            )
+            sliced = sliced[index_tuple]
 
         # Now sliced has shape (n_series, ny, nx)
         n = len(series_coord.points)

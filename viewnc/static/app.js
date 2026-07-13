@@ -746,10 +746,23 @@ function buildDimSliders(cube) {
     function syncRange(movedLo) {
       let lo = parseInt(slo.value);
       let hi = parseInt(shi.value);
-      if (lo > hi) {
-        if (movedLo) { slo.value = hi; lo = hi; }
-        else { shi.value = lo; hi = lo; }
+
+      if (movedLo) {
+        // Primary (lo) slider moved: drag hi along so it is never below lo.
+        // This keeps the default behaviour as "single slice"; the user can
+        // then expand the range by moving hi independently afterwards.
+        if (hi < lo) {
+          hi = lo;
+          shi.value = hi;
+        }
+      } else {
+        // Secondary (hi) slider moved independently: clamp lo down if needed.
+        if (lo > hi) {
+          lo = hi;
+          slo.value = lo;
+        }
       }
+
       $(`rlo-${coord.name}`).textContent = fmtIdx(lo);
       $(`rhi-${coord.name}`).textContent = fmtIdx(hi);
       const n = hi - lo + 1;
