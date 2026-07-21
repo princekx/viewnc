@@ -277,42 +277,53 @@ def api_location_series():
         else:
             series_coord = extra_coords[-1]
 
-        # Fix every other extra dim at the user's currently selected slider index.
-        # constraints[name] = {"range": [lo, hi], "processor": ..., "value": ...}
-        # We must remove dims by their *current* position in the progressively-
-        # sliced cube, not always dim-0.  Build a full index tuple each time.
-        sliced = cube
-        for fc in extra_coords:
-            if fc.name() == series_coord.name():
-                continue          # leave the series dim intact
-            c_spec = constraints.get(fc.name(), {})
-            lo = (c_spec.get("range") or [None])[0]
-            n_pts = len(fc.points)
-            if lo is not None and 0 <= int(lo) < n_pts:
-                idx = int(lo)
+        # Build a single indexing tuple that fixes all extra dims except the
+        # series dim at once, so dimension positions never shift mid-loop.
+        # Spatial dims (last 2) stay as slice(None) so they remain intact.
+        idx_tuple = []
+        for fc in dim_coords:
+            if fc.name() in (y_coord.name(), x_coord.name()):
+                # Spatial dims – keep all rows/columns
+                idx_tuple.append(slice(None))
+            elif fc.name() == series_coord.name():
+                # Series dim – keep all points; we'll iterate below
+                idx_tuple.append(slice(None))
             else:
-                idx = n_pts // 2  # fall back to midpoint
-            # Find which dimension fc currently occupies in the sliced cube
-            try:
-                dim_pos = sliced.coord_dims(fc.name())[0]
-            except Exception:
-                continue  # coord no longer present, skip
-            index_tuple = tuple(
-                idx if i == dim_pos else slice(None)
-                for i in range(sliced.ndim)
-            )
-            sliced = sliced[index_tuple]
+                # Fix this extra dim at the slider's chosen index
+                c_spec = constraints.get(fc.name(), {})
+                lo = (c_spec.get("range") or [None])[0]
+                n_pts = len(fc.points)
+                if lo is not None and 0 <= int(lo) < n_pts:
+                    fix_idx = int(lo)
+                else:
+                    fix_idx = n_pts // 2
+                idx_tuple.append(fix_idx)
 
-        # Now sliced has shape (n_series, ny, nx)
+        sliced = cube[tuple(idx_tuple)]
+        # After fixing the other extra dims sliced has shape (n_series, ny, nx)
+
+        # Find where the series coord sits in sliced
+        try:
+            series_dim_in_sliced = sliced.coord_dims(series_coord.name())[0]
+        except Exception:
+            series_dim_in_sliced = 0
+
+
         n = len(series_coord.points)
         series_vals = []
         for i in range(n):
-            v = sliced[i].data
+            # Build index that picks the i-th point along the series dimension
+            pt_idx = tuple(
+                i if d == series_dim_in_sliced else slice(None)
+                for d in range(sliced.ndim)
+            )
+            v = sliced[pt_idx].data
             if hasattr(v, '__getitem__'):
                 v = float(np.ma.filled(np.atleast_1d(v)[yi, xi], np.nan))
             else:
                 v = float(v)
             series_vals.append(None if np.isnan(v) else v)
+
 
         # Format axis labels (time-aware)
         from viewnc.iris_loader import _is_time_coord, _fmt_date

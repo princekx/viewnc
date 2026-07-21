@@ -1262,12 +1262,95 @@ async function render2D(data, meta, plotType, colormap) {
       if (!pt) return;
       // Ignore coastline / marker scatter trace clicks
       if (pt.data?.type === 'scatter') return;
-      renderLocSeries(pt.x, pt.y, meta, xVals, yVals);
+      showAxisPicker(pt.x, pt.y, meta, xVals, yVals);
     });
   } else {
     $('plotly-div').classList.remove('click-enabled');
   }
 }
+
+// ── Axis Picker Modal ────────────────────────────────────────────────────────
+
+// Pending click state (set when picker is open)
+let _pendingClick = null;
+
+/**
+ * Show the axis-picker modal when the user clicks on the map.
+ * If no extra dims exist (ndim ≤ 2), skip directly to renderLocSeries.
+ */
+function showAxisPicker(xClick, yClick, meta, xVals, yVals) {
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  if (!cube) return;
+
+  const ndim = cube.ndim;
+  const extraDims = ndim > 2 ? cube.dim_coords.slice(0, ndim - 2) : [];
+
+  // No choice needed — go straight through
+  if (extraDims.length === 0) {
+    renderLocSeries(xClick, yClick, meta, xVals, yVals, null);
+    return;
+  }
+
+  // Stash click context so the button callbacks can use it
+  _pendingClick = { xClick, yClick, meta, xVals, yVals };
+
+  // Build option buttons (one per extra dim)
+  const opts = $('axis-picker-options');
+  opts.innerHTML = '';
+
+  // Icons for common axis types
+  const axisIcon = name => {
+    if (/time/i.test(name)) return '🕒';
+    if (/pressure|plev/i.test(name)) return '🌡️';
+    if (/level|height|depth|altitude/i.test(name)) return '📏';
+    if (/ensemble|member/i.test(name)) return '🎲';
+    return '📐';
+  };
+
+  extraDims.forEach((coord, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'axis-picker-btn';
+    btn.style.animationDelay = `${i * 0.04}s`;
+    const npts = coord.values?.length ?? coord.size ?? (coord.shape?.[0] ?? '?');
+    const unitsStr = coord.units ? `${coord.units} · ` : '';
+    btn.innerHTML = `
+      <span class="axis-picker-btn-icon">${axisIcon(coord.name)}</span>
+      <span class="axis-picker-btn-body">
+        <span class="axis-picker-btn-name">${coord.name}</span>
+        <span class="axis-picker-btn-meta">${unitsStr}${npts} points</span>
+      </span>
+      <span class="axis-picker-btn-arrow">›</span>
+    `;
+    btn.addEventListener('click', () => confirmAxisPicker(coord.name));
+    opts.appendChild(btn);
+  });
+
+  // Show click coordinates in footer
+  const xU = meta.x.units ? ` ${meta.x.units}` : '';
+  const yU = meta.y?.units ? ` ${meta.y.units}` : '';
+  $('axis-picker-coords').textContent =
+    `📍 (${xClick.toFixed(2)}${xU},  ${yClick.toFixed(2)}${yU})`;
+
+  $('axis-picker-modal').classList.remove('hidden');
+}
+
+function confirmAxisPicker(axisName) {
+  const pending = _pendingClick;   // save before closeAxisPicker nulls it
+  closeAxisPicker();
+  if (!pending) return;
+  const { xClick, yClick, meta, xVals, yVals } = pending;
+  renderLocSeries(xClick, yClick, meta, xVals, yVals, axisName);
+}
+
+function closeAxisPicker() {
+  $('axis-picker-modal').classList.add('hidden');
+  _pendingClick = null;
+}
+
+// Allow Escape to close the picker
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeAxisPicker();
+});
 
 // ── Location Series Floating Window ──────────────────────────────────────────
 
@@ -1277,117 +1360,187 @@ const LOC_COLORS = [
   '#0891b2', '#db2777', '#65a30d', '#ea580c', '#6366f1',
 ];
 
-// Module-level state for the floating window
-const _locWin = {
-  traces: [],         // { x_val, y_val, color, label } per clicked location
-  axisName: null,
-  axisUnits: null,
-  units: null,
-  initialized: false, // has Plotly.newPlot been called yet?
-};
+// ── Per-axis floating window registry ────────────────────────────────────────
+// _axisWins: Map<axisName, { winEl, plotDivId, traces, initialized,
+//                            axisName, axisUnits, units, isVertProfile, colorIdx }>
+const _axisWins = new Map();
+let _winCount = 0;  // used for cascaded positioning
 
-function _ensureLocWin() {
-  $('loc-series-win').classList.remove('hidden');
+/** Create a new draggable/resizable window DOM element for the given axis. */
+function _createAxisWindow(axisKey) {
+  const idx = _winCount++;
+  const winId = `loc-win-${idx}`;
+  const plotId = `loc-plot-${idx}`;
+  const offset = idx * 30;
+
+  const win = document.createElement('div');
+  win.className = 'loc-win';
+  win.id = winId;
+  win.style.cssText = `right:${32 + offset}px;bottom:${40 + offset}px;`;
+
+  win.innerHTML = `
+    <div class="loc-win-header" id="${winId}-handle">
+      <span class="loc-win-icon">📍</span>
+      <span class="loc-win-title" id="${winId}-title">Location Series — ${axisKey}</span>
+      <div class="loc-win-actions">
+        <button class="btn btn-ghost btn-sm" onclick="exportAxisCSV('${axisKey}')" title="Download as CSV">⬇ CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearAxisWin('${axisKey}')" title="Clear series">⊘ Clear</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeAxisWin('${axisKey}')" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="loc-win-chart" id="${plotId}"></div>
+    <div class="loc-win-resize" id="${winId}-resize" title="Drag to resize"></div>
+  `;
+
+  $('loc-wins-container').appendChild(win);
+  _attachDragResize(winId, plotId);
+  return {
+    winEl: win, plotDivId: plotId,
+    traces: [], initialized: false,
+    axisName: null, axisUnits: null, units: null,
+    isVertProfile: false, colorIdx: 0
+  };
 }
 
-async function renderLocSeries(xClick, yClick, meta, xVals, yVals) {
+/** Attach drag and corner-resize handlers to a dynamically created window. */
+function _attachDragResize(winId, plotId) {
+  const handle = document.getElementById(`${winId}-handle`);
+  const grip = document.getElementById(`${winId}-resize`);
+  if (!handle) return;
+
+  let dragging = false, startX, startY, origLeft, origTop;
+  handle.addEventListener('mousedown', e => {
+    if (e.target.closest('button')) return;
+    dragging = true;
+    const win = document.getElementById(winId);
+    const rect = win.getBoundingClientRect();
+    win.style.right = 'auto'; win.style.bottom = 'auto';
+    win.style.left = rect.left + 'px'; win.style.top = rect.top + 'px';
+    origLeft = rect.left; origTop = rect.top;
+    startX = e.clientX; startY = e.clientY;
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const win = document.getElementById(winId);
+    if (!win) { dragging = false; return; }
+    win.style.left = Math.max(0, origLeft + (e.clientX - startX)) + 'px';
+    win.style.top = Math.max(0, origTop + (e.clientY - startY)) + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; document.body.style.userSelect = ''; });
+
+  if (grip) {
+    let resizing = false, rsx, rsy, rw, rh;
+    grip.addEventListener('mousedown', e => {
+      resizing = true;
+      const win = document.getElementById(winId);
+      rsx = e.clientX; rsy = e.clientY;
+      rw = win.offsetWidth; rh = win.offsetHeight;
+      e.preventDefault(); document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!resizing) return;
+      const win = document.getElementById(winId);
+      if (!win) { resizing = false; return; }
+      win.style.width = Math.max(320, rw + (e.clientX - rsx)) + 'px';
+      win.style.height = Math.max(280, rh + (e.clientY - rsy)) + 'px';
+      try { Plotly.Plots.resize(plotId); } catch (_) { }
+    });
+    document.addEventListener('mouseup', () => { resizing = false; document.body.style.userSelect = ''; });
+  }
+}
+
+async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOverride) {
+  // seriesAxisOverride is required from the picker (null only for ndim<=2 cubes)
   const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
   if (!cube) return;
 
-  // Snap to nearest grid value
   const snapX = xVals.reduce((a, b) => Math.abs(b - xClick) < Math.abs(a - xClick) ? b : a, xVals[0]);
   const snapY = yVals.reduce((a, b) => Math.abs(b - yClick) < Math.abs(a - yClick) ? b : a, yVals[0]);
 
-  const color = LOC_COLORS[_locWin.traces.length % LOC_COLORS.length];
-  _ensureLocWin();
-
   const xU = meta.x.units ? ` ${meta.x.units}` : '';
   const yU = meta.y?.units ? ` ${meta.y.units}` : '';
-  $('loc-win-title').textContent =
-    `${cube.name}  ·  fetching (${snapX.toFixed(2)}, ${snapY.toFixed(2)})…`;
+  const seriesAxis = seriesAxisOverride ?? $('click-axis-select')?.value ?? null;
+
+  // Key for this window — one window per chosen axis
+  const winKey = seriesAxis || '__default__';
+
+  // Get or create the per-axis window
+  if (!_axisWins.has(winKey)) {
+    _axisWins.set(winKey, _createAxisWindow(winKey === '__default__' ? 'series' : winKey));
+  }
+  const win = _axisWins.get(winKey);
+  const titleEl = document.getElementById(`${win.winEl.id}-title`);
+  if (titleEl) titleEl.textContent = `${cube.name}  ·  fetching…`;
 
   let result;
   showLoading(`Loading series at (${snapX.toFixed(2)}, ${snapY.toFixed(2)})…`);
   try {
-    // Read the user's chosen series axis (may be empty when ndim <= 2)
-    const seriesAxis = $('click-axis-select')?.value || null;
     result = await apiFetch('/api/location_series', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cube_index: STATE.selectedIdx,
-        x_val: snapX,
-        y_val: snapY,
+        x_val: snapX, y_val: snapY,
         constraints: STATE.constraints,
-        series_axis: seriesAxis,   // name of the dim to iterate over
+        series_axis: seriesAxis,
       }),
     });
   } catch (err) {
     hideLoading();
-    $('loc-win-title').textContent = `Error: ${err.message}`;
+    if (titleEl) titleEl.textContent = `Error: ${err.message}`;
     return;
   }
   hideLoading();
 
-
-  // Store axis metadata on first fetch (shared across all traces)
-  if (_locWin.traces.length === 0) {
-    _locWin.axisName = result.axis_name ?? 'index';
-    _locWin.axisUnits = result.axis_units ?? '';
-    _locWin.units = result.units ?? '';
+  // Store axis metadata on first fetch for this window
+  if (win.traces.length === 0) {
+    win.axisName = result.axis_name ?? 'index';
+    win.axisUnits = result.axis_units ?? '';
+    win.units = result.units ?? '';
+    const _isPressureLike = n => /pressure|level|plev|height|altitude|depth/i.test(n || '');
+    win.isVertProfile = _isPressureLike(win.axisName) && typeof result.axis_values[0] === 'number';
   }
 
-  const axisName = _locWin.axisName;
-  const axisUnits = _locWin.axisUnits ? ` (${_locWin.axisUnits})` : '';
+  const { axisName, axisUnits: aUnits, units, isVertProfile } = win;
+  const axisUnits = aUnits ? ` (${aUnits})` : '';
+  const color = LOC_COLORS[win.colorIdx % LOC_COLORS.length];
+  win.colorIdx++;
+
   const label = `(${result.x_val.toFixed(2)}${xU}, ${result.y_val.toFixed(2)}${yU})`;
 
-  // Detect vertical-profile axes (pressure, level, height, …) so we render
-  // them in the conventional scientific orientation: axis on y (inverted for
-  // pressure), value on x.
-  const _isPressureLike = n => /pressure|level|plev|height|altitude|depth/i.test(n || '');
-  const isVertProfile = _isPressureLike(axisName) && typeof result.axis_values[0] === 'number';
 
-  let newTrace;
-  if (isVertProfile) {
-    newTrace = {
-      type: 'scatter',
-      mode: 'lines+markers',
-      x: result.values,
-      y: result.axis_values,
-      name: label,
-      line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
-      marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
-      hovertemplate: `<b>${label}</b><br>${axisName}: %{y}<br>Value: %{x:.4g} ${_locWin.units}<extra></extra>`,
-    };
-  } else {
-    newTrace = {
-      type: 'scatter',
-      mode: 'lines+markers',
-      x: result.axis_values,
-      y: result.values,
-      name: label,
-      line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
-      marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
-      hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${_locWin.units}<extra></extra>`,
-    };
-  }
+  const newTrace = isVertProfile ? {
+    type: 'scatter', mode: 'lines+markers',
+    x: result.values, y: result.axis_values, name: label,
+    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+    marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
+    hovertemplate: `<b>${label}</b><br>${axisName}: %{y}<br>Value: %{x:.4g} ${units}<extra></extra>`,
+  } : {
+    type: 'scatter', mode: 'lines+markers',
+    x: result.axis_values, y: result.values, name: label,
+    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+    marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
+    hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${units}<extra></extra>`,
+  };
 
-  if (!_locWin.initialized) {
-    Plotly.newPlot('loc-series-div', [newTrace],
-      _locWinLayout(axisName, axisUnits, _locWin.units, isVertProfile), {
+  if (!win.initialized) {
+    Plotly.newPlot(win.plotDivId, [newTrace],
+      _locWinLayout(axisName, axisUnits, units, isVertProfile), {
       responsive: true, displaylogo: false,
       modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
     });
-    _locWin.initialized = true;
+    win.initialized = true;
   } else {
-    Plotly.addTraces('loc-series-div', newTrace);
+    Plotly.addTraces(win.plotDivId, newTrace);
   }
 
   _addClickMarker(snapX, snapY, color);
-  _locWin.traces.push({ x_val: snapX, y_val: snapY, color, label });
+  win.traces.push({ x_val: snapX, y_val: snapY, color, label });
 
-  $('loc-win-title').textContent =
-    `${cube.name}  ·  ${_locWin.traces.length} location${_locWin.traces.length > 1 ? 's' : ''}  [click to add more]`;
+  const n = win.traces.length;
+  if (titleEl) titleEl.textContent =
+    `${cube.name}  ·  ${axisName}  ·  ${n} location${n > 1 ? 's' : ''}  [click to add]`;
 }
 
 function _locWinLayout(axisName, axisUnits, units, isVertProfile = false) {
@@ -1443,92 +1596,49 @@ function _addClickMarker(x, y, color) {
   } catch (_) { }
 }
 
+/** Close and destroy one axis window. */
+function closeAxisWin(axisKey) {
+  const win = _axisWins.get(axisKey);
+  if (!win) return;
+  try { Plotly.purge(win.plotDivId); } catch (_) { }
+  win.winEl.remove();
+  _axisWins.delete(axisKey);
+}
+
+/** Clear traces from one axis window (keeps window open). */
+function clearAxisWin(axisKey) {
+  const win = _axisWins.get(axisKey);
+  if (!win) return;
+  win.traces = []; win.initialized = false; win.colorIdx = 0;
+  win.axisName = null; win.axisUnits = null; win.units = null;
+  try { Plotly.purge(win.plotDivId); } catch (_) { }
+  const titleEl = document.getElementById(`${win.winEl.id}-title`);
+  if (titleEl) titleEl.textContent = `Location Series — ${axisKey}`;
+  _removeAllClickMarkers();
+}
+
+/** Clear ALL axis windows and click markers on the map. */
 function clearLocSeries() {
-  _locWin.traces = [];
-  _locWin.initialized = false;
-  _locWin.axisName = null;
-  _locWin.axisUnits = null;
-  _locWin.units = null;
-  try { Plotly.purge('loc-series-div'); } catch (_) { }
-  $('loc-win-title').textContent = 'Location Series';
+  for (const key of [..._axisWins.keys()]) closeAxisWin(key);
+  _winCount = 0;
+  _removeAllClickMarkers();
+}
+
+function _removeAllClickMarkers() {
   try {
     const gd = $('plotly-div');
-    if (gd.data) {
-      const idx = gd.data
-        .map((t, i) => (t.mode === 'markers' && t.showlegend === false && t.name === '') ? i : -1)
-        .filter(i => i >= 0)
-        .reverse();
-      idx.forEach(i => Plotly.deleteTraces('plotly-div', i));
-    }
+    if (!gd || !gd.data) return;
+    const idx = gd.data
+      .map((t, i) => (t.mode === 'markers' && t.showlegend === false && t.name === '') ? i : -1)
+      .filter(i => i >= 0).reverse();
+    idx.forEach(i => Plotly.deleteTraces('plotly-div', i));
   } catch (_) { }
 }
 
-function closeLocSeries() {
-  $('loc-series-win').classList.add('hidden');
-}
+// Legacy aliases kept so any existing call sites still work
+function closeLocSeries() { clearLocSeries(); }
 
-// ── Drag & resize for the floating window ────────────────────────────────────
-(function initLocWinDrag() {
-  let dragging = false, startX, startY, origLeft, origTop;
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const handle = $('loc-win-drag-handle');
-    if (!handle) return;
-
-    handle.addEventListener('mousedown', e => {
-      if (e.target.closest('button')) return;
-      dragging = true;
-      const win = $('loc-series-win');
-      const rect = win.getBoundingClientRect();
-      win.style.right = 'auto';
-      win.style.bottom = 'auto';
-      win.style.left = rect.left + 'px';
-      win.style.top = rect.top + 'px';
-      origLeft = rect.left;
-      origTop = rect.top;
-      startX = e.clientX;
-      startY = e.clientY;
-      document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const win = $('loc-series-win');
-      win.style.left = Math.max(0, origLeft + (e.clientX - startX)) + 'px';
-      win.style.top = Math.max(0, origTop + (e.clientY - startY)) + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-      dragging = false;
-      document.body.style.userSelect = '';
-    });
-
-    // Corner resize
-    const grip = $('loc-win-resize');
-    if (grip) {
-      let resizing = false, rsx, rsy, rw, rh;
-      grip.addEventListener('mousedown', e => {
-        resizing = true;
-        const win = $('loc-series-win');
-        rsx = e.clientX; rsy = e.clientY;
-        rw = win.offsetWidth; rh = win.offsetHeight;
-        e.preventDefault();
-        document.body.style.userSelect = 'none';
-      });
-      document.addEventListener('mousemove', e => {
-        if (!resizing) return;
-        const win = $('loc-series-win');
-        win.style.width = Math.max(320, rw + (e.clientX - rsx)) + 'px';
-        win.style.height = Math.max(280, rh + (e.clientY - rsy)) + 'px';
-        Plotly.Plots.resize('loc-series-div');
-      });
-      document.addEventListener('mouseup', () => {
-        resizing = false;
-        document.body.style.userSelect = '';
-      });
-    }
-  });
-})();
+// Drag & resize is now attached per-window in _attachDragResize() above.
 
 async function plotTimeSeries(idx) {
   showLoading('Computing spatial mean…');
@@ -1804,24 +1914,21 @@ async function exportNetCDF() {
 }
 
 /** Download all currently plotted location series as a multi-column CSV. */
-async function exportSeriesCSV() {
-  if (!_locWin.initialized || _locWin.traces.length === 0) {
-    alert('No location series to export. Click points on the heatmap first.');
-    return;
+/** Export CSV for a specific axis window. Called from each window's button. */
+async function exportAxisCSV(axisKey) {
+  const win = _axisWins.get(axisKey);
+  if (!win || !win.initialized || win.traces.length === 0) {
+    alert('No series data to export for this axis.'); return;
   }
-  // Collect data from the Plotly figure
-  const gd = $('loc-series-div');
+  const gd = document.getElementById(win.plotDivId);
   if (!gd || !gd.data || gd.data.length === 0) { alert('No series data found.'); return; }
 
   const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  const isVert = win.isVertProfile;
   const seriesPayload = gd.data.map((trace, i) => ({
     label: trace.name || `series_${i}`,
-    axis_values: (trace.y && _locWin.axisName && /pressure|level|plev|height|altitude|depth/i.test(_locWin.axisName))
-      ? trace.y   // vertical profile: y = axis, x = values
-      : trace.x,
-    values: (trace.y && _locWin.axisName && /pressure|level|plev|height|altitude|depth/i.test(_locWin.axisName))
-      ? trace.x
-      : trace.y,
+    axis_values: isVert ? trace.y : trace.x,
+    values: isVert ? trace.x : trace.y,
   }));
 
   try {
@@ -1829,9 +1936,9 @@ async function exportSeriesCSV() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        axis_name: _locWin.axisName ?? 'index',
-        axis_units: _locWin.axisUnits ?? '',
-        units: _locWin.units ?? '',
+        axis_name: win.axisName ?? 'index',
+        axis_units: win.axisUnits ?? '',
+        units: win.units ?? '',
         name: cube?.name ?? 'variable',
         series: seriesPayload,
       }),
@@ -1840,11 +1947,16 @@ async function exportSeriesCSV() {
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition') || '';
     const match = cd.match(/filename="?([^"]+)"?/);
-    const filename = match ? match[1] : 'viewnc_series.csv';
-    _triggerDownload(blob, filename);
+    _triggerDownload(blob, match ? match[1] : 'viewnc_series.csv');
   } catch (err) {
     alert('Series CSV export failed: ' + err.message);
   }
+}
+
+/** Legacy — export all windows sequentially. */
+async function exportSeriesCSV() {
+  if (_axisWins.size === 0) { alert('No location series to export.'); return; }
+  for (const key of _axisWins.keys()) await exportAxisCSV(key);
 }
 
 window.addEventListener('resize', () => {

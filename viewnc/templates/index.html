@@ -149,8 +149,10 @@
             <div id="stats-masked-badge" class="stats-masked-badge"></div>
           </div>
           <div class="plot-toolbar-actions">
-            <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇ CSV</button>
-            <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇ NetCDF</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Download displayed slice as CSV">⬇
+              CSV</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportNetCDF()" title="Download displayed slice as NetCDF">⬇
+              NetCDF</button>
             <button class="btn btn-ghost btn-sm" onclick="downloadPlot()">⬇ PNG</button>
             <button class="btn btn-ghost btn-sm" onclick="closePlot()">✕ Close</button>
           </div>
@@ -159,7 +161,8 @@
         <!-- Inline Plot Styling Options Bar -->
         <div class="plot-options-bar" id="plot-options-bar">
           <!-- Plot Button -->
-          <button id="plot-btn" class="btn btn-accent btn-sm" onclick="plotData()" disabled style="height:28px; padding:0 12px; font-weight:600; font-size:0.8rem">
+          <button id="plot-btn" class="btn btn-accent btn-sm" onclick="plotData()" disabled
+            style="height:28px; padding:0 12px; font-weight:600; font-size:0.8rem">
             ▶ Plot
           </button>
 
@@ -168,7 +171,8 @@
           <!-- Plot Type Dropdown -->
           <div class="option-inline">
             <span class="label-text">Plot Type</span>
-            <select id="plot-type-select" class="select select-sm" style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
+            <select id="plot-type-select" class="select select-sm"
+              style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
               <option value="heatmap" selected>Heatmap (2D)</option>
               <option value="contour">Contour (2D)</option>
               <option value="timeseries">Time Series</option>
@@ -196,23 +200,29 @@
           <span class="toolbar-sep" id="cmap-sep"></span>
 
           <!-- Symmetric Toggle -->
-          <input type="checkbox" id="symmetric-toggle" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
-          <label class="btn btn-ghost btn-sm" id="symmetric-label" for="symmetric-toggle" title="Symmetric ± colorbar (forces zmin = -zmax)">⇄ Symmetric</label>
+          <input type="checkbox" id="symmetric-toggle"
+            style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+          <label class="btn btn-ghost btn-sm" id="symmetric-label" for="symmetric-toggle"
+            title="Symmetric ± colorbar (forces zmin = -zmax)">⇄ Symmetric</label>
 
           <!-- Marginal Profiles Toggle -->
-          <input type="checkbox" id="marginal-toggle" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
-          <label class="btn btn-ghost btn-sm" id="marginal-label" for="marginal-toggle" title="Toggle zonal &amp; meridional mean panels">📉 Marginals</label>
+          <input type="checkbox" id="marginal-toggle"
+            style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+          <label class="btn btn-ghost btn-sm" id="marginal-label" for="marginal-toggle"
+            title="Toggle zonal &amp; meridional mean panels">📉 Marginals</label>
 
           <!-- Coastlines Dropdown Options -->
           <div class="option-inline" id="coastline-inline-row">
             <span class="label-text">Coastlines</span>
-            <select id="coastline-res" class="select select-sm" style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
+            <select id="coastline-res" class="select select-sm"
+              style="width:115px; height:28px; padding:0 8px; font-size:0.78rem">
               <option value="none">None</option>
               <option value="110m">Low (110m)</option>
               <option value="50m" selected>Mid (50m)</option>
               <option value="10m">Fine (10m)</option>
             </select>
-            <select id="coastline-color" class="select select-sm" style="width:90px; height:28px; padding:0 8px; font-size:0.78rem">
+            <select id="coastline-color" class="select select-sm"
+              style="width:90px; height:28px; padding:0 8px; font-size:0.78rem">
               <option value="rgba(0,0,0,0.9)" selected>Black</option>
               <option value="rgba(255,255,255,0.9)">White</option>
               <option value="rgba(220,220,220,0.8)">Light grey</option>
@@ -227,15 +237,19 @@
           <!-- Inline Contour Options (only shown in Contour mode) -->
           <div id="contour-inline-opts" class="inline-opts-group hidden">
             <span class="label-text">Levels</span>
-            <input type="number" id="contour-levels" class="inline-input" value="10" min="3" max="50" style="width:42px; height:28px; text-align:center" />
-            
+            <input type="number" id="contour-levels" class="inline-input" value="10" min="3" max="50"
+              style="width:42px; height:28px; text-align:center" />
+
             <span class="label-text" style="margin-left:4px">Range</span>
-            <input type="number" id="contour-min" class="inline-input" placeholder="Min" style="width:58px; height:28px" />
+            <input type="number" id="contour-min" class="inline-input" placeholder="Min"
+              style="width:58px; height:28px" />
             <span class="label-text">to</span>
-            <input type="number" id="contour-max" class="inline-input" placeholder="Max" style="width:58px; height:28px" />
+            <input type="number" id="contour-max" class="inline-input" placeholder="Max"
+              style="width:58px; height:28px" />
 
             <div style="display:flex;align-items:center;gap:4px;margin-left:4px">
-              <input type="checkbox" id="contour-filled" checked style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px" />
+              <input type="checkbox" id="contour-filled" checked
+                style="accent-color:var(--accent);cursor:pointer;width:13px;height:13px" />
               <label for="contour-filled" class="label-text" style="cursor:pointer;user-select:none">Filled</label>
             </div>
           </div>
@@ -244,21 +258,8 @@
         <div id="plotly-div" class="plotly-container"></div>
       </div>
 
-      <!-- Location Series Floating Window -->
-      <div id="loc-series-win" class="loc-win hidden">
-        <div class="loc-win-header" id="loc-win-drag-handle">
-          <span class="loc-win-icon">📍</span>
-          <span id="loc-win-title" class="loc-win-title">Location Series</span>
-          <div class="loc-win-actions">
-            <button class="btn btn-ghost btn-sm" onclick="exportSeriesCSV()" title="Download series data as CSV">⬇
-              CSV</button>
-            <button class="btn btn-ghost btn-sm" onclick="clearLocSeries()" title="Clear all series">⊘ Clear</button>
-            <button class="btn btn-ghost btn-sm" onclick="closeLocSeries()" title="Close">✕</button>
-          </div>
-        </div>
-        <div id="loc-series-div" class="loc-win-chart"></div>
-        <div class="loc-win-resize" id="loc-win-resize" title="Drag to resize"></div>
-      </div>
+      <!-- Per-axis location series windows are created dynamically by JS -->
+      <div id="loc-wins-container"></div>
 
 
       <div id="loading-overlay" class="loading-overlay hidden">
@@ -277,6 +278,20 @@
         <button class="modal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ░░ AXIS PICKER MODAL ░░ -->
+  <div id="axis-picker-modal" class="axis-picker-backdrop hidden" onclick="closeAxisPicker()">
+    <div class="axis-picker" id="axis-picker-box" onclick="event.stopPropagation()">
+      <div class="axis-picker-header">
+        <span class="axis-picker-icon">📍</span>
+        <span class="axis-picker-title">Plot series along…</span>
+        <button class="axis-picker-close" onclick="closeAxisPicker()" title="Cancel">✕</button>
+      </div>
+      <div class="axis-picker-hint">Choose the axis to iterate over at the clicked location</div>
+      <div id="axis-picker-options" class="axis-picker-options"></div>
+      <div class="axis-picker-coords" id="axis-picker-coords"></div>
     </div>
   </div>
 

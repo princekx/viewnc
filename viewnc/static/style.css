@@ -1992,3 +1992,154 @@ body {
   color: #fff;
   border-color: var(--accent);
 }
+
+/* ── Axis Picker Modal ── */
+.axis-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 600;
+  animation: fadeIn 0.15s ease;
+}
+
+.axis-picker-backdrop.hidden {
+  display: none !important;
+}
+
+.axis-picker {
+  background: var(--bg-elevated, #fff);
+  border: 1px solid var(--border-bright, #e2e8f0);
+  border-radius: 14px;
+  box-shadow: 0 12px 48px rgba(15, 23, 42, 0.22), 0 2px 12px rgba(15, 23, 42, 0.10);
+  padding: 0;
+  width: min(340px, 90vw);
+  animation: axisPickerPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+@keyframes axisPickerPop {
+  from { opacity: 0; transform: scale(0.88) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.axis-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(124, 58, 237, 0.05));
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.axis-picker-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.axis-picker-title {
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.01em;
+}
+
+.axis-picker-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.axis-picker-close:hover {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.axis-picker-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+  padding: 10px 16px 4px;
+}
+
+.axis-picker-coords {
+  font-size: 0.68rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted, #94a3b8);
+  padding: 0 16px 12px;
+}
+
+.axis-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 4px;
+}
+
+.axis-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-base, #f8faff);
+  border: 1.5px solid var(--border, #e2e8f0);
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  animation: fadeIn 0.12s ease both;
+}
+
+.axis-picker-btn:hover {
+  background: var(--bg-hover, #eff6ff);
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+  transform: translateY(-1px);
+}
+
+.axis-picker-btn:active {
+  transform: translateY(0);
+}
+
+.axis-picker-btn-icon {
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+
+.axis-picker-btn-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.axis-picker-btn-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.axis-picker-btn-meta {
+  font-size: 0.67rem;
+  color: var(--text-muted, #94a3b8);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 1px;
+}
+
+.axis-picker-btn-arrow {
+  color: var(--text-muted, #cbd5e1);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
