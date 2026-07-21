@@ -728,10 +728,16 @@ function buildDimSliders(cube) {
         <span class="range-npts" id="rnpts-${coord.name}">(1 pt)</span>
       </div>
       <div class="dual-slider-wrap">
-        <input type="range" class="slider slider-lo" id="slo-${coord.name}"
-               min="0" max="${maxIdx}" step="1" value="0" />
-        <input type="range" class="slider slider-hi" id="shi-${coord.name}"
-               min="0" max="${maxIdx}" step="1" value="0" />
+        <div class="slider-row slider-lo-row">
+          <span class="slider-row-label">Start</span>
+          <input type="range" class="slider slider-lo" id="slo-${coord.name}"
+                 min="0" max="${maxIdx}" step="1" value="0" />
+        </div>
+        <div class="slider-row">
+          <span class="slider-row-label">End</span>
+          <input type="range" class="slider slider-hi" id="shi-${coord.name}"
+                 min="0" max="${maxIdx}" step="1" value="0" />
+        </div>
       </div>
       <div class="slider-extent">
         <span>${fmtIdx(0)}</span><span>${fmtIdx(maxIdx)}</span>
