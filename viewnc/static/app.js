@@ -748,18 +748,16 @@ function buildDimSliders(cube) {
       let hi = parseInt(shi.value);
 
       if (movedLo) {
-        // Primary (lo) slider moved: drag hi along so it is never below lo.
-        // This keeps the default behaviour as "single slice"; the user can
-        // then expand the range by moving hi independently afterwards.
+        // Start slider moved: end always follows so the selection stays a
+        // single point.  The user can then drag the end slider rightward
+        // independently to widen the range.
+        hi = lo;
+        shi.value = hi;
+      } else {
+        // End slider moved independently: only prevent it going below start.
         if (hi < lo) {
           hi = lo;
           shi.value = hi;
-        }
-      } else {
-        // Secondary (hi) slider moved independently: clamp lo down if needed.
-        if (lo > hi) {
-          lo = hi;
-          slo.value = lo;
         }
       }
 
