@@ -1377,10 +1377,18 @@ function _createAxisWindow(axisKey) {
   const plotId = `loc-plot-${idx}`;
   const offset = idx * 30;
 
+  // Portrait for vertical-profile axes (pressure/level/height/depth),
+  // landscape for everything else (time, ensemble, …)
+  const _isVertAxis = n => /pressure|level|plev|height|altitude|depth/i.test(n || '');
+  const isVert = _isVertAxis(axisKey);
+  const W = isVert ? 340 : 520;   // window width  (px)
+  const H = isVert ? 520 : 320;   // window height (px)
+
   const win = document.createElement('div');
   win.className = 'loc-win';
   win.id = winId;
-  win.style.cssText = `right:${32 + offset}px;bottom:${40 + offset}px;`;
+  win.style.cssText =
+    `right:${32 + offset}px;bottom:${40 + offset}px;width:${W}px;height:${H}px;`;
 
   win.innerHTML = `
     <div class="loc-win-header" id="${winId}-handle">
@@ -1580,8 +1588,10 @@ function _locWinLayout(axisName, axisUnits, units, isVertProfile = false) {
       // Invert y so high pressure (surface) is at the bottom
       autorange: isVertProfile ? 'reversed' : true,
     },
-    margin: { t: 40, b: 65, l: 60, r: 14 },
+    margin: { t: 40, b: isVertProfile ? 40 : 65, l: 60, r: 14 },
     autosize: true,
+    // Explicit height drives the Plotly canvas to match the window orientation
+    height: isVertProfile ? 440 : 260,
     showlegend: true,
   };
 }
