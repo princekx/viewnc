@@ -808,68 +808,67 @@ body {
   background: linear-gradient(to right, var(--bg-hover), var(--accent2) 50%, var(--bg-hover));
 }
 
-/* ── Pill-shaped thumbs ───────────────────────────────────────────────────── */
-/* Pill = wide (22 px) × shorter (10 px) with fully rounded ends              */
-/* Start thumb: solid accent fill, easy to identify as the anchor point       */
+/* ── Triangle thumbs ─────────────────────────────────────────────────────── */
+/* Start (lo): ▼ down-pointing triangle — sits above the track, tip points    */
+/*             down at the selected start position.                            */
 .slider-lo::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 22px;
-  height: 10px;
-  border-radius: 5px;
+  width: 16px;
+  height: 14px;
+  border-radius: 0;
   background: var(--accent);
   border: none;
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35), 0 0 0 2px rgba(37, 99, 235, 0.15);
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
   cursor: ew-resize;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform 0.12s, filter 0.12s;
+  filter: drop-shadow(0 2px 3px rgba(37, 99, 235, 0.45));
 }
 
-/* End thumb: accent2 colour with a white centre stripe to signal "range end" */
+/* End (hi): ▲ up-pointing triangle — rises from below, tip points up at end */
 .slider-hi::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 22px;
-  height: 10px;
-  border-radius: 5px;
-  background: linear-gradient(to right,
-      var(--accent2) 35%,
-      #fff 35%, #fff 65%,
-      var(--accent2) 65%);
+  width: 16px;
+  height: 14px;
+  border-radius: 0;
+  background: var(--accent2);
   border: none;
-  box-shadow: 0 1px 4px rgba(124, 92, 252, 0.35), 0 0 0 2px rgba(124, 92, 252, 0.15);
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
   cursor: ew-resize;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform 0.12s, filter 0.12s;
+  filter: drop-shadow(0 -2px 3px rgba(124, 92, 252, 0.45));
 }
 
 /* Firefox equivalents */
 .slider-lo::-moz-range-thumb {
-  width: 22px;
-  height: 10px;
-  border-radius: 5px;
+  width: 16px;
+  height: 14px;
+  border-radius: 0;
   background: var(--accent);
   border: none;
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
   cursor: ew-resize;
 }
 
 .slider-hi::-moz-range-thumb {
-  width: 22px;
-  height: 10px;
-  border-radius: 5px;
+  width: 16px;
+  height: 14px;
+  border-radius: 0;
   background: var(--accent2);
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(124, 92, 252, 0.35);
+  border: none;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
   cursor: ew-resize;
 }
 
 .slider-lo::-webkit-slider-thumb:hover,
 .slider-lo::-webkit-slider-thumb:active {
-  transform: scaleX(1.15) scaleY(1.2);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.45), 0 0 0 3px rgba(37, 99, 235, 0.20);
+  transform: scale(1.2);
+  filter: drop-shadow(0 3px 5px rgba(37, 99, 235, 0.60));
 }
 
 .slider-hi::-webkit-slider-thumb:hover,
 .slider-hi::-webkit-slider-thumb:active {
-  transform: scaleX(1.15) scaleY(1.2);
-  box-shadow: 0 2px 8px rgba(124, 92, 252, 0.45), 0 0 0 3px rgba(124, 92, 252, 0.20);
+  transform: scale(1.2);
+  filter: drop-shadow(0 -3px 5px rgba(124, 92, 252, 0.60));
 }
 
 .slider-extent {
