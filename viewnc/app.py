@@ -716,6 +716,124 @@ def api_export_series_csv():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/export/series_netcdf", methods=["POST"])
+def api_export_series_netcdf():
+    """
+    Export one or more 1-D location series as a NetCDF4 file.
+
+    Body JSON: same structure as /api/export/series_csv
+        { axis_name, axis_units, units, name, series: [{label, axis_values, values}] }
+    """
+    body = request.get_json(force=True)
+    series_list = body.get("series", [])
+    if not series_list:
+        return jsonify({"error": "No series data provided"}), 400
+
+    axis_name  = body.get("axis_name",  "index")
+    axis_units = body.get("axis_units", "")
+    data_units = body.get("units",      "")
+    var_name   = body.get("name",       "variable")
+
+    try:
+        import tempfile, os
+        import numpy as np
+
+        # Try to use netCDF4; fall back to scipy if unavailable.
+        try:
+            import netCDF4 as _nc
+            _backend = "netCDF4"
+        except ImportError:
+            _backend = None
+
+        raw_axis = series_list[0].get("axis_values", [])
+        n = len(raw_axis)
+
+        # Determine whether axis values are numeric or string (e.g. formatted dates)
+        def _to_float(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        numeric_vals = [_to_float(v) for v in raw_axis]
+        axis_is_numeric = all(v is not None for v in numeric_vals)
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        if _backend == "netCDF4":
+            ds = _nc.Dataset(tmp_path, "w", format="NETCDF4")
+            ds.title     = f"viewnc location series: {var_name}"
+            ds.Conventions = "CF-1.8"
+            ds.source    = "viewnc"
+
+            dim_name = axis_name.replace(" ", "_")
+            ds.createDimension(dim_name, n)
+
+            # Axis coordinate variable
+            if axis_is_numeric:
+                ax = ds.createVariable(dim_name, "f8", (dim_name,))
+                ax[:] = numeric_vals
+                if axis_units:
+                    ax.units = axis_units
+                ax.long_name = axis_name
+            else:
+                # String axis (formatted dates, labels …) – store as index + labels attr
+                ax = ds.createVariable(dim_name, "i4", (dim_name,))
+                ax[:] = list(range(n))
+                ax.long_name  = axis_name
+                ax.labels     = ",".join(str(v) for v in raw_axis)
+
+            # Data variables – one per clicked location
+            for i, s in enumerate(series_list):
+                raw_label = s.get("label", f"series_{i}")
+                # Make a safe NetCDF variable name
+                safe = (raw_label.replace("(", "").replace(")", "")
+                        .replace(",", "").replace(" ", "_").replace(".", "p"))
+                vname = f"loc_{i}" if len(safe) > 40 else safe
+                values = s.get("values", [])
+                v = ds.createVariable(vname, "f8", (dim_name,), fill_value=np.nan)
+                v[:] = [float(x) if x is not None else np.nan for x in values]
+                v.units     = data_units
+                v.location  = raw_label
+                v.long_name = f"{var_name} at {raw_label}"
+
+            ds.close()
+
+        else:
+            # scipy fallback (NETCDF3_CLASSIC only, no string variables)
+            from scipy.io import netcdf_file
+            with netcdf_file(tmp_path, "w") as ds:
+                ds.title = f"viewnc location series: {var_name}"
+                dim_name = axis_name.replace(" ", "_") or "index"
+                ds.createDimension(dim_name, n)
+                ax = ds.createVariable(dim_name, "f", (dim_name,))
+                ax[:] = numeric_vals if axis_is_numeric else list(range(n))
+                if axis_units:
+                    ax.units = axis_units
+                for i, s in enumerate(series_list):
+                    raw_label = s.get("label", f"series_{i}")
+                    safe = f"loc_{i}"
+                    values = s.get("values", [])
+                    v = ds.createVariable(safe, "f", (dim_name,))
+                    v[:] = [float(x) if x is not None else np.nan for x in values]
+                    v.units    = data_units
+                    v.location = raw_label
+
+        safe_name = var_name.replace(" ", "_").replace("/", "-")
+        filename  = f"viewnc_{safe_name}_{axis_name}_series.nc"
+        return send_file(
+            tmp_path,
+            mimetype="application/x-netcdf",
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    except Exception as exc:
+        logger.exception("Series NetCDF export failed")
+        return jsonify({"error": str(exc)}), 500
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _maybe_downsample(arr: np.ndarray, max_size: int) -> np.ndarray:

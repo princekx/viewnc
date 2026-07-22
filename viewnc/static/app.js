@@ -1396,6 +1396,8 @@ function _createAxisWindow(axisKey) {
       <span class="loc-win-title" id="${winId}-title">Location Series — ${axisKey}</span>
       <div class="loc-win-actions">
         <button class="btn btn-ghost btn-sm" onclick="exportAxisCSV('${axisKey}')" title="Download as CSV">⬇ CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="downloadAxisPNG('${axisKey}')" title="Download as PNG">⬇ PNG</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportAxisNetCDF('${axisKey}')" title="Download as NetCDF">⬇ NC</button>
         <button class="btn btn-ghost btn-sm" onclick="clearAxisWin('${axisKey}')" title="Clear series">⊘ Clear</button>
         <button class="btn btn-ghost btn-sm" onclick="closeAxisWin('${axisKey}')" title="Close">✕</button>
       </div>
@@ -1971,6 +1973,69 @@ async function exportAxisCSV(axisKey) {
 async function exportSeriesCSV() {
   if (_axisWins.size === 0) { alert('No location series to export.'); return; }
   for (const key of _axisWins.keys()) await exportAxisCSV(key);
+}
+
+/** Download the current series plot as a high-res PNG. */
+function downloadAxisPNG(axisKey) {
+  const win = _axisWins.get(axisKey);
+  if (!win || !win.initialized) { alert('No plot to download yet.'); return; }
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  const safeName = (cube?.name || 'series').replace(/\s+/g, '_');
+  const safeAxis = axisKey.replace(/\s+/g, '_');
+  Plotly.downloadImage(win.plotDivId, {
+    format: 'png',
+    filename: `viewnc_${safeName}_${safeAxis}_series`,
+    width: win.isVertProfile ? 680 : 1040,
+    height: win.isVertProfile ? 960 : 560,
+    scale: 2,
+  });
+}
+
+/** Export the series data as a NetCDF file via the backend. */
+async function exportAxisNetCDF(axisKey) {
+  const win = _axisWins.get(axisKey);
+  if (!win || !win.initialized || win.traces.length === 0) {
+    alert('No series data to export for this axis.'); return;
+  }
+  const gd = document.getElementById(win.plotDivId);
+  if (!gd || !gd.data || gd.data.length === 0) { alert('No series data found.'); return; }
+
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+  const isVert = win.isVertProfile;
+  const seriesPayload = gd.data.map((trace, i) => ({
+    label: trace.name || `series_${i}`,
+    axis_values: isVert ? trace.y : trace.x,
+    values: isVert ? trace.x : trace.y,
+  }));
+
+  try {
+    showLoading('Exporting NetCDF…');
+    const res = await fetch('/api/export/series_netcdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        axis_name: win.axisName ?? 'index',
+        axis_units: win.axisUnits ?? '',
+        units: win.units ?? '',
+        name: cube?.name ?? 'variable',
+        series: seriesPayload,
+      }),
+    });
+    hideLoading();
+    if (!res.ok) {
+      const text = await res.text();
+      let errMsg;
+      try { errMsg = JSON.parse(text).error; } catch (_) { errMsg = null; }
+      throw new Error(errMsg || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    _triggerDownload(blob, match ? match[1] : 'viewnc_series.nc');
+  } catch (err) {
+    hideLoading();
+    alert('Series NetCDF export failed: ' + err.message);
+  }
 }
 
 window.addEventListener('resize', () => {
