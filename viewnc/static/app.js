@@ -1222,7 +1222,7 @@ async function render2D(data, meta, plotType, colormap) {
     fetchAndRenderStats();
   }
 
-  // ── Post-render colorbar correction ─────────────────────────────────────────
+  // ── Post-render colorbar correction ────────────────────────────────────────
   // Skipped when marginal panels are on (domain layout changes internal geometry).
   // When scaleanchor is active (geographic plots), Plotly compresses the axis
   // area to maintain aspect ratio.  Read the actual rendered axis pixel height
@@ -1255,7 +1255,7 @@ async function render2D(data, meta, plotType, colormap) {
   } catch (_) { /* best-effort */ }
 
 
-  // ── Click-to-series listener (only for 2D plot types) ────────────────────
+  // ── Click-to-series listener (only for 2D plot types) ──────────────────
   if (plotType === 'heatmap' || plotType === 'contour') {
     const plotDiv = $('plotly-div');
     plotDiv.classList.add('click-enabled');
@@ -1289,47 +1289,56 @@ function showAxisPicker(xClick, yClick, meta, xVals, yVals) {
   const ndim = cube.ndim;
   const extraDims = ndim > 2 ? cube.dim_coords.slice(0, ndim - 2) : [];
 
-  // No choice needed — go straight through
-  if (extraDims.length === 0) {
-    renderLocSeries(xClick, yClick, meta, xVals, yVals, null);
-    return;
-  }
-
-  // Stash click context so the button callbacks can use it
-  _pendingClick = { xClick, yClick, meta, xVals, yVals };
-
-  // Build option buttons (one per extra dim)
-  const opts = $('axis-picker-options');
-  opts.innerHTML = '';
-
-  // Icons for common axis types
+  // Icons for all axis types
   const axisIcon = name => {
     if (/time/i.test(name)) return '🕒';
     if (/pressure|plev/i.test(name)) return '🌡️';
     if (/level|height|depth|altitude/i.test(name)) return '📏';
     if (/ensemble|member/i.test(name)) return '🎲';
+    if (/lat/i.test(name)) return '↕️';
+    if (/lon/i.test(name)) return '↔️';
     return '📐';
   };
 
-  extraDims.forEach((coord, i) => {
+  // Full list: extra dims first, then lat, then lon — always at least 2 spatial axes
+  const allAxes = [
+    ...extraDims.map(c => ({
+      name: c.name, units: c.units,
+      npts: c.values?.length ?? c.size ?? (c.shape?.[0] ?? '?'),
+      spatial: false,
+    })),
+    ...(meta.y ? [{ name: meta.y.name, units: meta.y.units, npts: yVals.length, spatial: true }] : []),
+    { name: meta.x.name, units: meta.x.units, npts: xVals.length, spatial: true },
+  ];
+
+  _pendingClick = { xClick, yClick, meta, xVals, yVals };
+
+  const opts = $('axis-picker-options');
+  opts.innerHTML = '';
+
+  allAxes.forEach((ax, i) => {
     const btn = document.createElement('button');
     btn.className = 'axis-picker-btn';
+    if (ax.spatial) btn.classList.add('axis-picker-btn-spatial');
     btn.style.animationDelay = `${i * 0.04}s`;
-    const npts = coord.values?.length ?? coord.size ?? (coord.shape?.[0] ?? '?');
-    const unitsStr = coord.units ? `${coord.units} · ` : '';
+    const unitsStr = ax.units ? `${ax.units} · ` : '';
+    const hint = ax.spatial
+      ? (ax.name === meta.x.name
+        ? 'longitude profile at clicked φ'
+        : 'latitude profile at clicked λ')
+      : `${ax.npts} points`;
     btn.innerHTML = `
-      <span class="axis-picker-btn-icon">${axisIcon(coord.name)}</span>
+      <span class="axis-picker-btn-icon">${axisIcon(ax.name)}</span>
       <span class="axis-picker-btn-body">
-        <span class="axis-picker-btn-name">${coord.name}</span>
-        <span class="axis-picker-btn-meta">${unitsStr}${npts} points</span>
+        <span class="axis-picker-btn-name">${ax.name}</span>
+        <span class="axis-picker-btn-meta">${unitsStr}${hint}</span>
       </span>
       <span class="axis-picker-btn-arrow">›</span>
     `;
-    btn.addEventListener('click', () => confirmAxisPicker(coord.name));
+    btn.addEventListener('click', () => confirmAxisPicker(ax.name));
     opts.appendChild(btn);
   });
 
-  // Show click coordinates in footer
   const xU = meta.x.units ? ` ${meta.x.units}` : '';
   const yU = meta.y?.units ? ` ${meta.y.units}` : '';
   $('axis-picker-coords').textContent =

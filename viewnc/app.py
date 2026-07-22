@@ -271,6 +271,49 @@ def api_location_series():
         # The frontend passes series_axis = coord name chosen by the user.
         # Fall back to the innermost extra dim when no preference is given.
         series_axis = body.get("series_axis") or None
+
+        # ── Spatial series (latitude or longitude profile) ─────────────────────
+        # When the user picks a spatial axis (lat/lon), extract the row or column
+        # from the currently-constrained 2-D slice instead of iterating extra dims.
+        if series_axis in (x_coord.name(), y_coord.name()):
+            # Re-use extract_slice which already knows how to apply constraints
+            data, slice_meta = extract_slice(_state["cubes"], cube_index, constraints)
+            # data shape: (ny, nx) — may be downsampled, so recompute from meta
+            xs = np.array(slice_meta["x"].get("values") or xpts.tolist())
+            ys = np.array((slice_meta.get("y") or {}).get("values") or ypts.tolist())
+
+            if series_axis == x_coord.name():
+                # Longitude profile: fix clicked latitude, vary longitude
+                yi_s = int(np.argmin(np.abs(ys - y_val)))
+                row = np.ma.filled(data[yi_s, :].astype(float), np.nan)
+                values = [None if np.isnan(v) else float(v) for v in row]
+                return jsonify({
+                    "axis_name":   x_coord.name(),
+                    "axis_units":  str(x_coord.units),
+                    "axis_values": xs.tolist(),
+                    "values":      values,
+                    "units":       str(cube.units),
+                    "name":        cube.name(),
+                    "x_val":       float(xs[int(np.argmin(np.abs(xs - x_val)))]),
+                    "y_val":       float(ys[yi_s]),
+                })
+            else:
+                # Latitude profile: fix clicked longitude, vary latitude
+                xi_s = int(np.argmin(np.abs(xs - x_val)))
+                col = np.ma.filled(data[:, xi_s].astype(float), np.nan)
+                values = [None if np.isnan(v) else float(v) for v in col]
+                return jsonify({
+                    "axis_name":   y_coord.name(),
+                    "axis_units":  str(y_coord.units),
+                    "axis_values": ys.tolist(),
+                    "values":      values,
+                    "units":       str(cube.units),
+                    "name":        cube.name(),
+                    "x_val":       float(xs[xi_s]),
+                    "y_val":       float(ys[int(np.argmin(np.abs(ys - y_val)))]),
+                })
+
+        # ── Non-spatial (extra dim) series ─────────────────────────────────────
         if series_axis:
             match = next((c for c in extra_coords if c.name() == series_axis), None)
             series_coord = match if match else extra_coords[-1]
