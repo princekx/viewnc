@@ -1662,6 +1662,66 @@ function _attachDragResize(winId, plotId) {
   }
 }
 
+/**
+ * Format a coordinate value for use in a legend label.
+ *
+ * lat/lon axes → compact compass notation:  45.25°N, 12.50°E, 23.10°S, 170.30°W
+ * time  axes  → compact date token:         "15 Jan 2023"  |  "15 Jan 12Z"
+ * Everything else → plain numeric with units, e.g. "500 hPa"
+ *
+ * @param {number|string} val   The coordinate value
+ * @param {string}        name  Coordinate name (e.g. 'latitude', 'time')
+ * @param {string}        units Coordinate units string
+ * @returns {string}
+ */
+function _fmtCoord(val, name, units) {
+  const n = (name || '').toLowerCase();
+  const u = (units || '').toLowerCase();
+
+  // Latitude detection
+  if (/lat|degree.*north|degrees_north/.test(n) || /degree.*north|degrees_north/.test(u)) {
+    const v = parseFloat(val);
+    if (!isNaN(v)) return `${Math.abs(v).toFixed(2)}°${v >= 0 ? 'N' : 'S'}`;
+  }
+
+  // Longitude detection
+  if (/lon|degree.*east|degrees_east/.test(n) || /degree.*east|degrees_east/.test(u)) {
+    let v = parseFloat(val);
+    if (!isNaN(v)) {
+      // Normalise 0→360 convention to -180…180 for compass labelling
+      if (v > 180) v -= 360;
+      return `${Math.abs(v).toFixed(2)}°${v >= 0 ? 'E' : 'W'}`;
+    }
+  }
+
+  // Time detection — by coord name OR CF-convention units ("days since …")
+  const isTime = /^(time|t)$/i.test(n.trim()) || /\bsince\b/i.test(u);
+  if (isTime) {
+    const s = String(val);
+    // Try to parse ISO-style date produced by the backend: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM"
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?/);
+    if (m) {
+      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const [, yr, mo, dy, hr, mn] = m;
+      const month = MONTHS[parseInt(mo, 10) - 1] || mo;
+      const day = parseInt(dy, 10);
+      const hasTime = hr !== undefined;
+      const isMidnight = hasTime && hr === '00' && mn === '00';
+      if (hasTime && !isMidnight) {
+        // Sub-daily: "15 Jan 12Z"  (year omitted — saves space, axis label has context)
+        return `${day} ${month} ${hr}Z`;
+      }
+      // Daily or midnight: "15 Jan 2023"
+      return `${day} ${month} ${yr}`;
+    }
+    return s;   // non-ISO string — pass through unchanged
+  }
+
+  // Generic: value + units
+  if (units && units !== '1' && units !== 'unknown') return `${val}\u202f${units}`;
+  return String(val);
+}
+
 async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOverride) {
   // seriesAxisOverride is required from the picker (null only for ndim<=2 cubes)
   const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
@@ -1718,7 +1778,36 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOve
   const color = LOC_COLORS[win.colorIdx % LOC_COLORS.length];
   win.colorIdx++;
 
-  const label = `(${result.x_val.toFixed(2)}${xU}, ${result.y_val.toFixed(2)}${yU})`;
+  // ── Build rich legend label ───────────────────────────────────────────────────
+  // Parts: fixed extra-dim values (from slider display) + spatial location
+  const labelParts = [];
+
+  // 1. Fixed extra dims (all dims except the series axis and the spatial pair)
+  const allDimCoords = cube.dim_coords;  // ordered list from the cube metadata
+  const spatialNames = new Set([
+    (meta.x?.name || '').toLowerCase(),
+    (meta.y?.name || '').toLowerCase(),
+  ]);
+  allDimCoords.forEach(coord => {
+    const cName = (coord.name || '').toLowerCase();
+    // Skip the series axis (it varies) and the spatial axes (handled below)
+    if (cName === (seriesAxis || '').toLowerCase()) return;
+    if (spatialNames.has(cName)) return;
+
+    // Read the displayed value from the slider's lo-label (already formatted)
+    const displayEl = $(`rlo-${coord.name}`);
+    const displayVal = displayEl ? displayEl.textContent.trim() : null;
+    if (displayVal !== null) {
+      labelParts.push(_fmtCoord(displayVal, coord.name, coord.units));
+    }
+  });
+
+  // 2. Spatial location with compass notation
+  const xFormatted = _fmtCoord(result.x_val, meta.x?.name || '', meta.x?.units || '');
+  const yFormatted = _fmtCoord(result.y_val, meta.y?.name || '', meta.y?.units || '');
+  labelParts.push(`${yFormatted}\u2009${xFormatted}`);
+
+  const label = labelParts.join('\u2002·\u2002');  // ' · ' en-space separators
 
 
   // Spline requires numeric coordinates — fall back to linear for string axes
