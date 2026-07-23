@@ -472,31 +472,51 @@ function selectVar(idx) {
 
   $('plot-btn').disabled = false;
 
-  // Auto-enable coastlines when the plot axes look geographic
-  autoSetCoastline(cube);
-
+  // Auto-configure plot type and coastlines based on the last 2 dimensions
+  autoConfigurePlot(cube);
 }
 
 /**
- * Enable the coastline toggle when the cube's spatial axes (last 2 dim_coords)
- * look like longitude and latitude.
+ * Automatically set the default plot type and coastline settings whenever
+ * a variable is selected.  The plot always defaults to the last 2 dimensions
+ * of the cube (generic behaviour):
+ *
+ *   ndim >= 2  → heatmap  (2-D view of dim[-2] × dim[-1])
+ *   ndim == 1  → line     (1-D profile along the single dimension)
+ *
+ * Coastlines are enabled at 50 m resolution when the last 2 dim_coords
+ * look like latitude × longitude (geographic axes), otherwise set to none.
  */
-function autoSetCoastline(cube) {
-  const resSel = $('coastline-res');
-  if (!resSel) return;
+function autoConfigurePlot(cube) {
   const dims = cube.dim_coords;
-  // Spatial axes are always the last two dim_coords
-  const xCoord = dims[dims.length - 1];
-  const yCoord = dims[dims.length - 2];
-  if (!xCoord || !yCoord) return;
+  const ndim = cube.ndim;
 
-  const lonRe = /lon|degree.*east|x/i;
-  const latRe = /lat|degree.*north|y/i;
-  const xSig = (xCoord.name || '') + ' ' + (xCoord.units || '') + ' ' + (xCoord.standard_name || '');
-  const ySig = (yCoord.name || '') + ' ' + (yCoord.units || '') + ' ' + (yCoord.standard_name || '');
+  // ── Default plot type: always based on last 2 dims ────────────────────────
+  const plotSel = $('plot-type-select');
+  if (plotSel) {
+    plotSel.value = ndim >= 2 ? 'heatmap' : 'line';
+  }
 
-  const isGeo = lonRe.test(xSig) && latRe.test(ySig);
-  resSel.value = isGeo ? '50m' : 'none';
+  // ── Coastlines: enable when last 2 dims are geographic ────────────────────
+  const resSel = $('coastline-res');
+  if (resSel && ndim >= 2) {
+    const xCoord = dims[dims.length - 1];
+    const yCoord = dims[dims.length - 2];
+
+    if (xCoord && yCoord) {
+      const lonRe = /lon|degree.*east/i;
+      const latRe = /lat|degree.*north/i;
+      const xSig = (xCoord.name || '') + ' ' + (xCoord.units || '') + ' ' + (xCoord.standard_name || '');
+      const ySig = (yCoord.name || '') + ' ' + (yCoord.units || '') + ' ' + (yCoord.standard_name || '');
+      const isGeo = lonRe.test(xSig) && latRe.test(ySig);
+      resSel.value = isGeo ? '50m' : 'none';
+    } else {
+      resSel.value = 'none';
+    }
+  } else if (resSel) {
+    resSel.value = 'none';
+  }
+
   updateOptionsBarVisibility();
 }
 
@@ -813,7 +833,7 @@ function coastlineTrace(data, color) {
 }
 
 async function render2D(data, meta, plotType, colormap) {
-  const cube = STATE.cubes[STATE.selectedIdx];
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
   const titleText = `${cube.name}  [${cube.units}]`;
 
   // Build x / y axes – meta.x.values is always a list now (server guarantees it)
@@ -1467,7 +1487,8 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOve
   if (titleEl) titleEl.textContent = `${cube.name}  ·  fetching…`;
 
   let result;
-  showLoading(`Loading series at (${snapX.toFixed(2)}, ${snapY.toFixed(2)})…`);
+  // Show inline loading in the window title — keeps the main plot interactive
+  if (titleEl) titleEl.textContent = `${cube.name}  ·  loading (${snapX.toFixed(2)}${xU}, ${snapY.toFixed(2)}${yU})…`;
   try {
     result = await apiFetch('/api/location_series', {
       method: 'POST',
@@ -1480,11 +1501,9 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOve
       }),
     });
   } catch (err) {
-    hideLoading();
-    if (titleEl) titleEl.textContent = `Error: ${err.message}`;
+    if (titleEl) titleEl.textContent = `${cube.name}  ·  error: ${err.message}`;
     return;
   }
-  hideLoading();
 
   // Store axis metadata on first fetch for this window
   if (win.traces.length === 0) {

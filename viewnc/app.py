@@ -135,6 +135,7 @@ def api_load():
         _state["filepath"] = str(p)
         _state["cubes"] = cubes
         _state["metadata"] = meta
+        _loc_series_cache.clear()   # invalidate any stale series cache
         return jsonify({"status": "ok", "filepath": str(p), "cubes": meta})
     except Exception as exc:
         logger.exception("Failed to load file")
@@ -343,29 +344,38 @@ def api_location_series():
                 idx_tuple.append(fix_idx)
 
         sliced = cube[tuple(idx_tuple)]
-        # After fixing the other extra dims sliced has shape (n_series, ny, nx)
+        # After fixing the other extra dims sliced has shape (..., n_series, ..., ny, nx)
 
-        # Find where the series coord sits in sliced
-        try:
-            series_dim_in_sliced = sliced.coord_dims(series_coord.name())[0]
-        except Exception:
-            series_dim_in_sliced = 0
+        # ── Cache check ────────────────────────────────────────────────────────
+        _ckey = (
+            cube_index,
+            json.dumps(constraints, sort_keys=True, default=str),
+            series_axis or '',
+            xi, yi,
+        )
+        if _ckey in _loc_series_cache:
+            return jsonify(_loc_series_cache[_ckey])
 
+        # ── Vectorised extraction ──────────────────────────────────────────────
+        # Load ALL data in a single pass.  For lazy/dask-backed cubes this
+        # issues ONE disk read instead of one per time-step.
+        raw = np.ma.filled(sliced.data, np.nan).astype(float)
 
-        n = len(series_coord.points)
-        series_vals = []
-        for i in range(n):
-            # Build index that picks the i-th point along the series dimension
-            pt_idx = tuple(
-                i if d == series_dim_in_sliced else slice(None)
-                for d in range(sliced.ndim)
-            )
-            v = sliced[pt_idx].data
-            if hasattr(v, '__getitem__'):
-                v = float(np.ma.filled(np.atleast_1d(v)[yi, xi], np.nan))
-            else:
-                v = float(v)
-            series_vals.append(None if np.isnan(v) else v)
+        # Clamp spatial indices to actual (possibly downsampled) shape
+        ny_raw, nx_raw = raw.shape[-2], raw.shape[-1]
+        yi_c = min(yi, ny_raw - 1)
+        xi_c = min(xi, nx_raw - 1)
+
+        # Build index that fixes the two spatial dims while keeping everything
+        # else (i.e. the series dim, plus any residual dims) as slice(None).
+        pt_idx = tuple(
+            yi_c if d == raw.ndim - 2 else
+            xi_c if d == raw.ndim - 1 else
+            slice(None)
+            for d in range(raw.ndim)
+        )
+        series_arr = raw[pt_idx].flatten()   # 1-D, length == n_series
+        series_vals = [None if np.isnan(v) else float(v) for v in series_arr]
 
 
         # Format axis labels (time-aware)
@@ -379,7 +389,7 @@ def api_location_series():
         else:
             axis_vals = series_coord.points.tolist()
 
-        return jsonify({
+        _payload = {
             "axis_name": series_coord.name(),
             "axis_units": str(series_coord.units),
             "axis_values": axis_vals,
@@ -388,7 +398,9 @@ def api_location_series():
             "name": cube.name(),
             "x_val": float(xpts[xi]),
             "y_val": float(ypts[yi]),
-        })
+        }
+        _loc_series_cache[_ckey] = _payload
+        return jsonify(_payload)
 
     except Exception as exc:
         logger.exception("Location series failed")
@@ -396,6 +408,11 @@ def api_location_series():
 
 
 
+
+# ── Location-series response cache ──────────────────────────────────────────
+# Keyed by (cube_index, constraints_json, series_axis, xi, yi).
+# Cleared automatically when a new file is loaded.
+_loc_series_cache: dict = {}
 
 # ── Coastlines ───────────────────────────────────────────────────────────────
 
