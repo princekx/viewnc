@@ -475,8 +475,6 @@ function selectVar(idx) {
   // Auto-enable coastlines when the plot axes look geographic
   autoSetCoastline(cube);
 
-  // Populate the click-series axis chooser
-  updateClickAxisSelect(cube);
 }
 
 /**
@@ -502,34 +500,6 @@ function autoSetCoastline(cube) {
   updateOptionsBarVisibility();
 }
 
-/**
- * Populate the "Click series axis" dropdown with the extra (non-spatial) dim
- * names for the currently selected cube.  Shows the row only when ndim > 2.
- * Defaults to the innermost extra dim (immediately before lat/lon) to match
- * the automatic profile behaviour.
- */
-function updateClickAxisSelect(cube) {
-  const row = $('click-axis-row');
-  const sel = $('click-axis-select');
-  if (!row || !sel) return;
-
-  const ndim = cube.ndim;
-  const extraDims = ndim > 2 ? cube.dim_coords.slice(0, ndim - 2) : [];
-
-  if (extraDims.length === 0) {
-    row.classList.add('hidden');
-    sel.innerHTML = '';
-    return;
-  }
-
-  row.classList.remove('hidden');
-  sel.innerHTML = extraDims.map((c, i) => {
-    // Default selection: innermost extra dim (last in the list = index ndim-3)
-    const selected = i === extraDims.length - 1 ? ' selected' : '';
-    const label = c.units ? `${c.name} (${c.units})` : c.name;
-    return `<option value="${c.name}"${selected}>${label}</option>`;
-  }).join('');
-}
 
 // ── Cube Info Cards ───────────────────────────────────────────────────────────
 function renderCubeCards() {
