@@ -1533,16 +1533,22 @@ async function renderLocSeries(xClick, yClick, meta, xVals, yVals, seriesAxisOve
   const label = `(${result.x_val.toFixed(2)}${xU}, ${result.y_val.toFixed(2)}${yU})`;
 
 
+  // Spline requires numeric coordinates — fall back to linear for string axes
+  // (e.g. formatted date strings on the time axis).
+  const axisIsNumeric = result.axis_values.length > 0
+    && typeof result.axis_values[0] === 'number';
+  const lineShape = axisIsNumeric ? 'spline' : 'linear';
+
   const newTrace = isVertProfile ? {
     type: 'scatter', mode: 'lines+markers',
     x: result.values, y: result.axis_values, name: label,
-    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+    line: { color, width: 2, shape: lineShape, smoothing: 0.5 },
     marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
     hovertemplate: `<b>${label}</b><br>${axisName}: %{y}<br>Value: %{x:.4g} ${units}<extra></extra>`,
   } : {
     type: 'scatter', mode: 'lines+markers',
     x: result.axis_values, y: result.values, name: label,
-    line: { color, width: 2, shape: 'spline', smoothing: 0.5 },
+    line: { color, width: 2, shape: lineShape, smoothing: 0.5 },
     marker: { size: 4, color: '#fff', line: { color, width: 1.5 } },
     hovertemplate: `<b>${label}</b><br>${axisName}: %{x}<br>Value: %{y:.4g} ${units}<extra></extra>`,
   };
