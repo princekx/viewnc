@@ -474,6 +474,9 @@ function selectVar(idx) {
 
   // Auto-configure plot type and coastlines based on the last 2 dimensions
   autoConfigurePlot(cube);
+
+  // Populate the step-navigation dimension selector
+  populateNavDimSelect(cube);
 }
 
 /**
@@ -518,6 +521,200 @@ function autoConfigurePlot(cube) {
   }
 
   updateOptionsBarVisibility();
+}
+
+// ── Frame-step navigation ─────────────────────────────────────────────────────
+
+/**
+ * Populate (or clear) the "along" dim-selector whenever a variable is selected.
+ * Shows the nav-dim-row only when the cube has extra (non-spatial) dimensions.
+ */
+function populateNavDimSelect(cube) {
+  const row = $('nav-dim-row');
+  const sel = $('nav-dim-select');
+  const prev = $('nav-prev-btn');
+  const next = $('nav-next-btn');
+  if (!row || !sel) return;
+
+  const ndim = cube.ndim;
+  const extraDims = ndim > 2 ? cube.dim_coords.slice(0, ndim - 2) : [];
+
+  if (extraDims.length === 0) {
+    row.classList.add('hidden');
+    if (prev) prev.disabled = true;
+    if (next) next.disabled = true;
+    $('nav-step-badge').textContent = '';
+    return;
+  }
+
+  row.classList.remove('hidden');
+  sel.innerHTML = extraDims.map(c => {
+    const label = c.units ? `${c.name} (${c.units})` : c.name;
+    return `<option value="${c.name}">${label}</option>`;
+  }).join('');
+
+  // Default to the innermost extra dim (last in list = index ndim-3)
+  sel.value = extraDims[extraDims.length - 1].name;
+
+  if (prev) prev.disabled = false;
+  if (next) next.disabled = false;
+
+  updateNavStepBadge();
+}
+
+/**
+ * Refresh the "step N / M" badge next to the nav buttons.
+ * Reads the current lo-slider position for the selected nav dim.
+ */
+function updateNavStepBadge() {
+  const badge = $('nav-step-badge');
+  const dimName = $('nav-dim-select')?.value;
+  if (!badge || !dimName) return;
+
+  const slo = $(`slo-${dimName}`);
+  if (!slo) { badge.textContent = ''; return; }
+
+  const cur = parseInt(slo.value) + 1;   // 1-based for display
+  const tot = parseInt(slo.max) + 1;
+  badge.textContent = `${cur} / ${tot}`;
+
+  // Dim the nav buttons at the boundaries
+  const prev = $('nav-prev-btn');
+  const next = $('nav-next-btn');
+  if (prev) prev.style.opacity = cur === 1 ? '0.35' : '';
+  if (next) next.style.opacity = cur === tot ? '0.35' : '';
+}
+
+/**
+ * Step the chosen navigation dimension by +1 or -1 and re-plot.
+ * @param {number} direction  -1 (backward) or +1 (forward)
+ */
+async function stepPlot(direction) {
+  if (STATE.selectedIdx === null) return;
+
+  const dimName = $('nav-dim-select')?.value;
+  if (!dimName) return;
+
+  const slo = $(`slo-${dimName}`);
+  const shi = $(`shi-${dimName}`);
+  if (!slo || !shi) return;
+
+  const maxIdx = parseInt(slo.max);
+  const curIdx = parseInt(slo.value);
+  const newIdx = Math.max(0, Math.min(maxIdx, curIdx + direction));
+  if (newIdx === curIdx) return;   // already at boundary
+
+  // Move both range handles to the new single-point position
+  slo.value = newIdx;
+  shi.value = newIdx;
+  // Fire the existing syncRange handler so STATE.constraints and the
+  // display labels all update consistently.
+  slo.dispatchEvent(new Event('input'));
+
+  updateNavStepBadge();
+
+  // If the plot has never been rendered, do a full render first.
+  const plotDiv = $('plotly-div');
+  const isRendered = !plotDiv.classList.contains('hidden') && plotDiv._fullData?.length;
+  if (!isRendered) {
+    await plotData();
+    return;
+  }
+
+  await stepRender();
+}
+
+/**
+ * Lightweight frame update used by stepPlot.
+ * Fetches a new /api/slice and patches the existing Plotly figure in-place
+ * via Plotly.restyle (z only) + Plotly.relayout (title).
+ * Does NOT rebuild traces, layout, coastlines, or the click listener.
+ */
+async function stepRender() {
+  if (STATE.selectedIdx === null) return;
+
+  const plotType = $('plot-type-select').value;
+  // Step navigation only makes sense for 2D plot types.
+  if (plotType !== 'heatmap' && plotType !== 'contour') {
+    await plotData();   // fall back for line / timeseries
+    return;
+  }
+
+  const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+
+  // Disable nav buttons while loading to prevent double-clicks
+  const prevBtn = $('nav-prev-btn');
+  const nextBtn = $('nav-next-btn');
+  if (prevBtn) prevBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
+
+  let result;
+  try {
+    result = await apiFetch('/api/slice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cube_index: STATE.selectedIdx, constraints: STATE.constraints }),
+    });
+  } catch (err) {
+    alert('Step error: ' + err.message);
+    return;
+  } finally {
+    // Re-enable nav buttons
+    if (prevBtn) prevBtn.disabled = false;
+    if (nextBtn) nextBtn.disabled = false;
+    updateNavStepBadge();  // restores boundary opacity
+  }
+
+  const data = result.data;
+  const meta = result.meta;
+
+  // ── Symmetric z range ────────────────────────────────────────────────────
+  const symmetric = $('symmetric-toggle')?.checked ?? false;
+  let zmin, zmax;
+  if (symmetric) {
+    const absMax = Math.max(Math.abs(meta.vmin ?? 0), Math.abs(meta.vmax ?? 1));
+    zmin = -absMax;
+    zmax = absMax;
+  }
+
+  // ── Patch trace 0: just the z-data (and zmin/zmax when symmetric) ────────
+  const zUpdate = { z: [data] };
+  if (symmetric) { zUpdate.zmin = zmin; zUpdate.zmax = zmax; }
+  Plotly.restyle('plotly-div', zUpdate, [0]);
+
+  // ── Update marginal traces if they are visible ────────────────────────────
+  const showMarginals = ($('marginal-toggle')?.checked ?? false);
+  if (showMarginals) {
+    const nx = (data[0] || []).length;
+    const ny = data.length;
+    const xVals = (meta.x.values?.length === nx)
+      ? meta.x.values : linspace(meta.x.min ?? 0, meta.x.max ?? nx - 1, nx);
+    const yVals = (meta.y?.values?.length === ny)
+      ? meta.y.values : linspace((meta.y?.min ?? 0), (meta.y?.max ?? ny - 1), ny);
+
+    const zonalMean = data.map(row => {
+      const v = row.filter(x => x !== null && isFinite(x));
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    });
+    const meridionalMean = xVals.map((_, j) => {
+      const v = data.map(r => r[j]).filter(x => x !== null && isFinite(x));
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    });
+
+    // Zonal trace is at index n-2, meridional at n-1 in the full trace list
+    const gd = $('plotly-div');
+    const n = gd._fullData?.length ?? 0;
+    if (n >= 2) {
+      Plotly.restyle('plotly-div', { x: [zonalMean], y: [yVals] }, [n - 2]);
+      Plotly.restyle('plotly-div', { x: [xVals], y: [meridionalMean] }, [n - 1]);
+    }
+  }
+
+  // ── Update title bar (step info) ─────────────────────────────────────────
+  $('plot-title-bar').textContent = `${cube.name}  —  shape: (${meta.shape.join(', ')})`;
+
+  // ── Refresh stats non-blocking ────────────────────────────────────────────
+  fetchAndRenderStats();
 }
 
 
@@ -768,6 +965,8 @@ function buildDimSliders(cube) {
       };
       // Refresh the live selection summary in the Cube Dimensions panel
       updateSelectionSummary(cube);
+      // Keep the nav step badge in sync when sliders are dragged manually
+      updateNavStepBadge();
     }
 
     slo.addEventListener('input', () => syncRange(true));

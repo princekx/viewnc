@@ -149,11 +149,31 @@
 
         <!-- Inline Plot Styling Options Bar -->
         <div class="plot-options-bar" id="plot-options-bar">
-          <!-- Plot Button -->
-          <button id="plot-btn" class="btn btn-accent btn-sm" onclick="plotData()" disabled
-            style="height:28px; padding:0 12px; font-weight:600; font-size:0.8rem">
-            ▶ Plot
-          </button>
+          <!-- Frame navigation: ◀  [▶ Plot]  ▶ -->
+          <div style="display:flex;align-items:center;gap:3px">
+            <button id="nav-prev-btn" class="btn btn-ghost btn-sm"
+              onclick="stepPlot(-1)" title="Previous step along selected dimension"
+              disabled style="height:28px;width:28px;padding:0;font-size:0.9rem;line-height:1">◀</button>
+
+            <button id="plot-btn" class="btn btn-accent btn-sm" onclick="plotData()" disabled
+              style="height:28px; padding:0 12px; font-weight:600; font-size:0.8rem">
+              ▶ Plot
+            </button>
+
+            <button id="nav-next-btn" class="btn btn-ghost btn-sm"
+              onclick="stepPlot(1)" title="Next step along selected dimension"
+              disabled style="height:28px;width:28px;padding:0;font-size:0.9rem;line-height:1">▶</button>
+          </div>
+
+          <!-- Step-dimension selector (hidden when no extra dims exist) -->
+          <div id="nav-dim-row" class="option-inline hidden" style="gap:4px">
+            <span class="label-text">along</span>
+            <select id="nav-dim-select" class="select select-sm"
+              style="width:108px;height:28px;padding:0 6px;font-size:0.78rem"
+              onchange="updateNavStepBadge()"></select>
+            <span id="nav-step-badge"
+              style="font-size:0.7rem;color:var(--text-muted);min-width:52px;font-variant-numeric:tabular-nums"></span>
+          </div>
 
           <span class="toolbar-sep"></span>
 
