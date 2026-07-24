@@ -1087,6 +1087,36 @@ function coastlineTrace(data, color) {
   };
 }
 
+// ── Zoom preservation cache ──────────────────────────────────────────────────
+// Stores the last axis ranges so style-only re-renders (colormap, symmetric,
+// marginals, coastlines) restore the user's current zoom instead of resetting.
+const _zoomCache = {
+  key: null,           // fingerprint: `${cubeIdx}::${constraintsJSON}`
+  xrange: null,        // [x0, x1] or null
+  yrange: null,        // [y0, y1] or null
+};
+
+/** Capture Plotly axis ranges before newPlot destroys the figure. */
+function _saveZoom(key) {
+  const gd = $('plotly-div');
+  if (!gd || !gd._fullLayout) { _zoomCache.key = null; return; }
+  const xa = gd._fullLayout.xaxis;
+  const ya = gd._fullLayout.yaxis;
+  _zoomCache.key = key;
+  _zoomCache.xrange = (xa && xa.range) ? [...xa.range] : null;
+  _zoomCache.yrange = (ya && ya.range) ? [...ya.range] : null;
+}
+
+/** Restore axis ranges after newPlot if the fingerprint still matches. */
+function _restoreZoom(key) {
+  if (_zoomCache.key !== key) return;
+  if (!_zoomCache.xrange && !_zoomCache.yrange) return;
+  const update = {};
+  if (_zoomCache.xrange) update['xaxis.range'] = _zoomCache.xrange;
+  if (_zoomCache.yrange) update['yaxis.range'] = _zoomCache.yrange;
+  Plotly.relayout('plotly-div', update);
+}
+
 /**
  * Build the title string shown inside the Plotly figure.
  * Line 1: "variable_name  [units]"
@@ -1477,12 +1507,19 @@ async function render2D(data, meta, plotType, colormap) {
   clearLocSeries();  // Reset floating window on each new plot
   $('stats-bar').classList.add('hidden');  // hide stale stats until fresh data arrives
 
+  // ── Capture current zoom (if any) before destroying the figure ───────────
+  const _zoomKey = `${STATE.selectedIdx}::${JSON.stringify(STATE.constraints)}`;
+  _saveZoom(_zoomKey);
+
   // Plotly needs a visible container on first render to size axes/colorbar correctly.
   await nextFrame();
   Plotly.newPlot('plotly-div', traces, layout, config);
   await nextFrame();
   Plotly.relayout('plotly-div', { height: getPlotHeight() });
   Plotly.Plots.resize('plotly-div');
+
+  // ── Restore previous zoom if it was a style-only update ──────────────────
+  _restoreZoom(_zoomKey);
 
   // Fetch and show statistics non-blocking (only for 2D plot types)
   if (plotType === 'heatmap' || plotType === 'contour') {
