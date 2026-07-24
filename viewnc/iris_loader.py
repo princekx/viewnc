@@ -243,6 +243,9 @@ def extract_slice(
 
     # ── Apply constraints (scalar or range-collapse) ────────────────────────
     sliced = cube
+    # Track what was fixed for each extra dimension (for title display)
+    fixed_coords: list[dict] = []
+
     for coord_name, spec in constraints.items():
         if spec is None:
             continue
@@ -295,6 +298,32 @@ def extract_slice(
                         0 if i == dim_idx else slice(None)
                         for i in range(sub.ndim)
                     )]
+
+                # Record fixed coord info for the title
+                if lo_idx == hi_idx:
+                    raw_val = pts[lo_idx]
+                    if _is_time_coord(coord):
+                        try:
+                            display_val = _fmt_date(coord.units.num2date(raw_val))
+                        except Exception:
+                            display_val = str(raw_val)
+                    else:
+                        display_val = f"{float(raw_val):.4g}"
+                    fixed_coords.append({
+                        "name": coord_name,
+                        "value": display_val,
+                        "units": str(coord.units),
+                        "index": lo_idx,
+                        "total": int(len(pts)),
+                    })
+                else:
+                    fixed_coords.append({
+                        "name": coord_name,
+                        "value": f"{processor}[{lo_idx}:{hi_idx}]",
+                        "units": str(coord.units),
+                        "index": lo_idx,
+                        "total": int(len(pts)),
+                    })
             else:
                 # Single-point constraint (nearest)
                 value = float(scalar) if scalar is not None else float(pts[0])
@@ -309,6 +338,23 @@ def extract_slice(
                     )]
                 else:
                     sliced = result
+
+                # Record fixed coord info for the title
+                nearest_val = pts[int(np.argmin(np.abs(pts - value)))]
+                if _is_time_coord(coord):
+                    try:
+                        display_val = _fmt_date(coord.units.num2date(nearest_val))
+                    except Exception:
+                        display_val = str(nearest_val)
+                else:
+                    display_val = f"{float(nearest_val):.4g}"
+                fixed_coords.append({
+                    "name": coord_name,
+                    "value": display_val,
+                    "units": str(coord.units),
+                    "index": int(np.argmin(np.abs(pts - value))),
+                    "total": int(len(pts)),
+                })
         except Exception as exc:
             logger.warning("Constraint on %s=%s failed: %s", coord_name, spec, exc)
 
@@ -372,6 +418,7 @@ def extract_slice(
         "shape": list(data.shape),
         "vmin": _safe_stat(np.nanmin, 0.0) if data.size else 0.0,
         "vmax": _safe_stat(np.nanmax, 1.0) if data.size else 1.0,
+        "fixed_coords": fixed_coords,
     }
 
     return data, meta

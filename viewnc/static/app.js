@@ -710,8 +710,11 @@ async function stepRender() {
     }
   }
 
+  // ── Update Plotly title in-place (dim info) ──────────────────────────────
+  Plotly.relayout('plotly-div', { 'title.text': buildPlotTitle(cube, meta) });
+
   // ── Update title bar (step info) ─────────────────────────────────────────
-  $('plot-title-bar').textContent = `${cube.name}  —  shape: (${meta.shape.join(', ')})`;
+  updateSliceTitle(cube, meta);
 
   // ── Refresh stats non-blocking ────────────────────────────────────────────
   fetchAndRenderStats();
@@ -979,6 +982,59 @@ function buildDimSliders(cube) {
 }
 
 // ── Plotting ──────────────────────────────────────────────────────────────────
+/**
+ * Update both the toolbar name label and the dimension-info strip above the plot.
+ * - #plot-title-bar  → variable name only (compact, stays in toolbar)
+ * - #slice-title     → variable [units]  │  dim = value  │  dim = value …
+ *
+ * @param {Object} cube   – cube metadata (from STATE.cubes)
+ * @param {Object} meta   – slice metadata (from /api/slice response)
+ */
+function updateSliceTitle(cube, meta) {
+  // ── Toolbar: just the variable name ──────────────────────────────────────
+  $('plot-title-bar').textContent = cube.name;
+
+  // ── Slice-title strip: rich dimension info ───────────────────────────────
+  const strip = $('slice-title');
+  if (!strip) return;
+
+  const fixed = meta.fixed_coords || [];
+
+  if (fixed.length === 0) {
+    // No extra dims fixed – hide the strip to save space
+    strip.classList.add('hidden');
+    return;
+  }
+
+  strip.classList.remove('hidden');
+
+  // Variable name + units chip
+  let html = `<span class="slice-title-var">${cube.name}</span>`;
+  const unitStr = cube.units && cube.units !== '1' && !cube.units.toLowerCase().includes('unknown')
+    ? cube.units : '';
+  if (unitStr) {
+    html += `<span class="slice-title-units">[${unitStr}]</span>`;
+  }
+
+  // Dimension chips
+  fixed.forEach(fc => {
+    const dimUnits = fc.units && fc.units !== '1'
+      && !fc.units.toLowerCase().includes('unknown')
+      && !fc.units.toLowerCase().includes('since')
+      ? fc.units : '';
+    html += `<span class="slice-title-sep">│</span>`;
+    html += `<span class="slice-title-dim">`;
+    html += `<span class="slice-title-key">${fc.name} = </span>`;
+    html += `<span class="slice-title-val">${fc.value}</span>`;
+    if (dimUnits) {
+      html += `<span class="slice-title-dim-units"> ${dimUnits}</span>`;
+    }
+    html += `</span>`;
+  });
+
+  strip.innerHTML = html;
+}
+
 async function plotData() {
   if (STATE.selectedIdx === null) return;
 
@@ -1031,9 +1087,30 @@ function coastlineTrace(data, color) {
   };
 }
 
+/**
+ * Build the title string shown inside the Plotly figure.
+ * Line 1: "variable_name  [units]"
+ * Line 2 (when extra dims are fixed): "time = 2024-01-15 │ pressure_level = 850 hPa"
+ */
+function buildPlotTitle(cube, meta) {
+  const fixed = (meta.fixed_coords || []).filter(fc => fc.value !== undefined);
+  let title = `${cube.name}  [${cube.units}]`;
+  if (fixed.length > 0) {
+    const dimLine = fixed.map(fc => {
+      const u = fc.units && fc.units !== '1'
+        && !fc.units.toLowerCase().includes('unknown')
+        && !fc.units.toLowerCase().includes('since')
+        ? ` ${fc.units}` : '';
+      return `${fc.name} = ${fc.value}${u}`;
+    }).join('  \u2502  ');
+    title += `<br><span style="font-size:11px;color:#64748b;font-weight:400">${dimLine}</span>`;
+  }
+  return title;
+}
+
 async function render2D(data, meta, plotType, colormap) {
   const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
-  const titleText = `${cube.name}  [${cube.units}]`;
+  const titleText = buildPlotTitle(cube, meta);
 
   // Build x / y axes – meta.x.values is always a list now (server guarantees it)
   const nx = (data[0] || []).length;
@@ -1045,7 +1122,8 @@ async function render2D(data, meta, plotType, colormap) {
     ? meta.y.values
     : linspace((meta.y ? meta.y.min : 0) ?? 0, (meta.y ? meta.y.max : ny - 1) ?? ny - 1, ny);
 
-  const margin = { t: 50, b: 60, l: 72, r: 80 };
+  const hasFixedDims = (meta.fixed_coords || []).length > 0;
+  const margin = { t: hasFixedDims ? 66 : 50, b: 60, l: 72, r: 80 };
   const plotH = getPlotHeight();
   const plotAreaH = plotH - margin.t - margin.b;
   // Colorbar initial sizing: fraction of paper height occupied by the axis area.
@@ -1390,7 +1468,7 @@ async function render2D(data, meta, plotType, colormap) {
     toImageButtonOptions: { format: 'png', filename: cube.name, scale: 2 },
   };
 
-  $('plot-title-bar').textContent = `${cube.name}  —  shape: (${meta.shape.join(', ')})`;
+  updateSliceTitle(cube, meta);
   $('welcome-screen').classList.add('hidden');
   setPlotMode(true);
   $('plot-area').classList.remove('hidden');
