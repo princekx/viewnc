@@ -1292,6 +1292,69 @@ body {
   font-size: 0.68rem;
 }
 
+
+/* ── Precision range bar (above the plot canvas) ── */
+.range-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: rgba(37, 99, 235, 0.04);
+  border-top: 1px solid rgba(37, 99, 235, 0.15);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.15);
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.range-bar-label {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.72rem;
+  min-width: 10px;
+}
+
+.range-bar-arrow {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.range-bar-sep {
+  color: var(--border-bright);
+  margin: 0 6px;
+  font-size: 0.85rem;
+}
+
+.range-bar-input {
+  width: 88px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-base);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.range-bar-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.range-bar-input::placeholder {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+/* Active state for the Range toggle button */
+#range-toggle-btn.active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .plotly-container {
   width: 100%;
   flex: 1;

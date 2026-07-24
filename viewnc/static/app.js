@@ -981,15 +981,6 @@ function buildDimSliders(cube) {
   updateSelectionSummary(cube);
 }
 
-// ── Plotting ──────────────────────────────────────────────────────────────────
-/**
- * Update both the toolbar name label and the dimension-info strip above the plot.
- * - #plot-title-bar  → variable name only (compact, stays in toolbar)
- * - #slice-title     → variable [units]  │  dim = value  │  dim = value …
- *
- * @param {Object} cube   – cube metadata (from STATE.cubes)
- * @param {Object} meta   – slice metadata (from /api/slice response)
- */
 function updateSliceTitle(cube, meta) {
   // ── Toolbar: just the variable name ──────────────────────────────────────
   $('plot-title-bar').textContent = cube.name;
@@ -1065,6 +1056,55 @@ async function plotData() {
     hideLoading();
   }
 }
+
+// ── Precision range bar ──────────────────────────────────────────────────────
+/** Toggle the #range-bar strip and highlight the button. */
+function toggleRangeBar() {
+  const bar = $('range-bar');
+  const btn = $('range-toggle-btn');
+  if (!bar) return;
+  const isOpen = !bar.classList.contains('hidden');
+  bar.classList.toggle('hidden', isOpen);
+  btn?.classList.toggle('active', !isOpen);
+  if (!isOpen) syncRangeInputsFromPlotly();  // populate inputs on open
+}
+
+/** Populate the range inputs from the current Plotly axis state. */
+function syncRangeInputsFromPlotly() {
+  const gd = $('plotly-div');
+  if (!gd || !gd._fullLayout) return;
+  const xa = gd._fullLayout.xaxis;
+  const ya = gd._fullLayout.yaxis;
+  const fmt = v => typeof v === 'number' ? +v.toPrecision(7) : v;
+  if (xa?.range) { $('rb-x0').value = fmt(xa.range[0]); $('rb-x1').value = fmt(xa.range[1]); }
+  if (ya?.range) { $('rb-y0').value = fmt(ya.range[0]); $('rb-y1').value = fmt(ya.range[1]); }
+}
+
+/** Apply the range inputs to the Plotly figure. */
+function applyRangeInputs() {
+  const x0 = parseFloat($('rb-x0').value);
+  const x1 = parseFloat($('rb-x1').value);
+  const y0 = parseFloat($('rb-y0').value);
+  const y1 = parseFloat($('rb-y1').value);
+  const update = {};
+  if (!isNaN(x0) && !isNaN(x1) && x0 !== x1) update['xaxis.range'] = [x0, x1];
+  if (!isNaN(y0) && !isNaN(y1) && y0 !== y1) update['yaxis.range'] = [y0, y1];
+  if (Object.keys(update).length) Plotly.relayout('plotly-div', update);
+}
+
+/** Reset both axes to full (auto) range. */
+function resetRange() {
+  Plotly.relayout('plotly-div', { 'xaxis.autorange': true, 'yaxis.autorange': true });
+  ['rb-x0', 'rb-x1', 'rb-y0', 'rb-y1'].forEach(id => { $(id).value = ''; });
+}
+
+// Allow Enter key in range inputs to apply immediately
+document.addEventListener('DOMContentLoaded', () => {
+  ['rb-x0', 'rb-x1', 'rb-y0', 'rb-y1'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') applyRangeInputs(); });
+  });
+});
 
 // ── Coastlines ───────────────────────────────────────────────────────────────
 async function fetchCoastlines(resolution) {
@@ -1494,7 +1534,7 @@ async function render2D(data, meta, plotType, colormap) {
   const config = {
     responsive: true,
     displaylogo: false,
-    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+    modeBarButtonsToRemove: ['lasso2d'],
     toImageButtonOptions: { format: 'png', filename: cube.name, scale: 2 },
   };
 
@@ -1520,6 +1560,11 @@ async function render2D(data, meta, plotType, colormap) {
 
   // ── Restore previous zoom if it was a style-only update ──────────────────
   _restoreZoom(_zoomKey);
+
+  // ── Sync range inputs whenever the user zooms/pans ───────────────────────
+  const _gd = $('plotly-div');
+  _gd.removeAllListeners?.('plotly_relayout');  // prevent double-binding
+  _gd.on('plotly_relayout', syncRangeInputsFromPlotly);
 
   // Fetch and show statistics non-blocking (only for 2D plot types)
   if (plotType === 'heatmap' || plotType === 'contour') {

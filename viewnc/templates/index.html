@@ -262,10 +262,32 @@
               <label for="contour-filled" class="label-text" style="cursor:pointer;user-select:none">Filled</label>
             </div>
           </div>
+
+          <!-- Range / Zoom precision toggle (right-aligned) -->
+          <div style="margin-left:auto">
+            <button id="range-toggle-btn" class="btn btn-ghost btn-sm"
+              onclick="toggleRangeBar()" title="Set precise X/Y axis ranges"
+              style="height:28px;padding:0 10px;font-size:0.78rem">⊞ Range</button>
+          </div>
         </div>
 
         <!-- Slice dimension title strip (just above the plot) -->
         <div id="slice-title" class="slice-title hidden"></div>
+
+        <!-- Precise axis range bar -->
+        <div id="range-bar" class="range-bar hidden">
+          <span class="range-bar-label">X</span>
+          <input type="number" id="rb-x0" class="range-bar-input" placeholder="x min" step="any" />
+          <span class="range-bar-arrow">→</span>
+          <input type="number" id="rb-x1" class="range-bar-input" placeholder="x max" step="any" />
+          <span class="range-bar-sep">│</span>
+          <span class="range-bar-label">Y</span>
+          <input type="number" id="rb-y0" class="range-bar-input" placeholder="y min" step="any" />
+          <span class="range-bar-arrow">→</span>
+          <input type="number" id="rb-y1" class="range-bar-input" placeholder="y max" step="any" />
+          <button class="btn btn-accent btn-sm" onclick="applyRangeInputs()" style="height:24px;padding:0 10px;font-size:0.76rem">Apply</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetRange()" style="height:24px;padding:0 8px;font-size:0.76rem">Reset</button>
+        </div>
 
         <div id="plotly-div" class="plotly-container"></div>
       </div>
