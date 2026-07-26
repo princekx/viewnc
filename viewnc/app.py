@@ -206,6 +206,11 @@ def api_timeseries():
         logger.exception("Timeseries failed")
         return jsonify({"error": str(exc)}), 500
 
+# ── Location-series response cache ──────────────────────────────────────────
+# Keyed by (cube_index, constraints_json, series_axis, xi, yi).
+# Cleared automatically when a new file is loaded.
+_loc_series_cache: dict = {}
+
 
 @app.route("/api/location_series", methods=["POST"])
 def api_location_series():
@@ -406,13 +411,6 @@ def api_location_series():
         logger.exception("Location series failed")
         return jsonify({"error": str(exc)}), 500
 
-
-
-
-# ── Location-series response cache ──────────────────────────────────────────
-# Keyed by (cube_index, constraints_json, series_axis, xi, yi).
-# Cleared automatically when a new file is loaded.
-_loc_series_cache: dict = {}
 
 # ── Coastlines ───────────────────────────────────────────────────────────────
 

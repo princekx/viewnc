@@ -102,6 +102,7 @@ function bokehToPlotly(name) {
   if (!stops) return name; // native Plotly colorscale name
   return stops.map((hex, i) => [i / (stops.length - 1), hex]);
 }
+
 // ── Custom Colormap Picker ────────────────────────────────────────────────────
 
 const CM_GROUPS = [
@@ -136,17 +137,6 @@ const CM_DISPLAY_NAMES = {
   Category20: 'Category20 (qualitative)',
   Dark2: 'Dark2 (qualitative)',
 };
-
-/**
- * Convert a named Bokeh palette to a Plotly colorscale array.
- * Falls back to using the string directly (for native Plotly names).
- */
-function bokehToPlotly(name) {
-  const stops = BOKEH_PALETTES[name];
-  if (!stops) return name; // native Plotly colorscale name
-  return stops.map((hex, i) => [i / (stops.length - 1), hex]);
-}
-// ── Custom Colormap Picker ────────────────────────────────────────────────────
 
 function _buildColormapDropdown() {
   const dropdown = document.getElementById('colormap-dropdown');
@@ -245,10 +235,6 @@ function getPlotHeight() {
   if (!el) return 520;
   const top = el.getBoundingClientRect().top;
   return Math.max(320, Math.floor(window.innerHeight - top - 18));
-}
-
-function setPlotMode(enabled) {
-  $('cube-info').classList.toggle('hidden', enabled);
 }
 
 function nextFrame() {
@@ -1540,7 +1526,7 @@ async function render2D(data, meta, plotType, colormap) {
 
   updateSliceTitle(cube, meta);
   $('welcome-screen').classList.add('hidden');
-  setPlotMode(true);
+  $('cube-info').classList.add('hidden');
   $('plot-area').classList.remove('hidden');
   document.querySelector('.plot-toolbar').classList.remove('hidden');
   $('plotly-div').classList.remove('hidden');
@@ -2103,9 +2089,6 @@ function _removeAllClickMarkers() {
   } catch (_) { }
 }
 
-// Legacy aliases kept so any existing call sites still work
-function closeLocSeries() { clearLocSeries(); }
-
 // Drag & resize is now attached per-window in _attachDragResize() above.
 
 async function plotTimeSeries(idx) {
@@ -2177,7 +2160,7 @@ async function plotTimeSeries(idx) {
     };
 
     $('plot-title-bar').textContent = `${result.name} — time series`;
-    setPlotMode(true);
+    $('cube-info').classList.add('hidden');
     $('plot-area').classList.remove('hidden');
     document.querySelector('.plot-toolbar').classList.remove('hidden');
     $('plotly-div').classList.remove('hidden');
@@ -2248,7 +2231,7 @@ function closePlot() {
   if (cards) cards.innerHTML = '';
   $('plot-area').classList.add('hidden');
   $('stats-bar').classList.add('hidden');
-  setPlotMode(false);
+  $('cube-info').classList.remove('hidden');
   $('welcome-screen').classList.remove('hidden');
 }
 function downloadPlot() { Plotly.downloadImage('plotly-div', { format: 'png', scale: 2, filename: 'viewnc_plot' }); }
@@ -2381,7 +2364,6 @@ async function exportNetCDF() {
   }
 }
 
-/** Download all currently plotted location series as a multi-column CSV. */
 /** Export CSV for a specific axis window. Called from each window's button. */
 async function exportAxisCSV(axisKey) {
   const win = _axisWins.get(axisKey);
@@ -2419,12 +2401,6 @@ async function exportAxisCSV(axisKey) {
   } catch (err) {
     alert('Series CSV export failed: ' + err.message);
   }
-}
-
-/** Legacy — export all windows sequentially. */
-async function exportSeriesCSV() {
-  if (_axisWins.size === 0) { alert('No location series to export.'); return; }
-  for (const key of _axisWins.keys()) await exportAxisCSV(key);
 }
 
 /** Download the current series plot as a high-res PNG. */
