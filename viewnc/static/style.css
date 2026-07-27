@@ -494,6 +494,156 @@ body {
   padding: 16px 0;
 }
 
+/* ── Variable Grouping ── */
+
+/* Wrapper for a group of cubes that share the same name */
+.var-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+
+.var-group:hover {
+  border-color: var(--border-bright);
+}
+
+/* Clickable group header (shows name + member count) */
+.var-group-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  background: linear-gradient(90deg, rgba(37,99,235,0.06) 0%, rgba(255,255,255,0) 100%);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+  border-bottom: 1px solid var(--border);
+}
+
+.var-group-header:hover {
+  background: linear-gradient(90deg, rgba(37,99,235,0.11) 0%, rgba(255,255,255,0) 100%);
+}
+
+.var-group.collapsed .var-group-header {
+  border-bottom-color: transparent;
+}
+
+/* Rotating chevron */
+.var-group-chevron {
+  font-size: 0.55rem;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.var-group.collapsed .var-group-chevron {
+  transform: rotate(0deg);
+}
+
+.var-group-chevron {
+  transform: rotate(90deg);
+}
+
+.var-group-name {
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Member-count bubble */
+.var-group-count {
+  font-size: 0.62rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* Collapsible body that contains child var-items */
+.var-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.22s ease;
+}
+
+.var-group.collapsed .var-group-body {
+  max-height: 0;
+}
+
+/* Child var-item: indented, no outer border (group provides it) */
+.var-item.var-child {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 7px 10px 7px 22px;
+  background: var(--bg-surface);
+  gap: 6px;
+}
+
+.var-item.var-child:last-child {
+  border-bottom: none;
+}
+
+.var-item.var-child:hover {
+  background: var(--bg-hover);
+}
+
+.var-item.var-child.selected {
+  background: var(--bg-active);
+}
+
+/* Left accent bar for children uses accent2 to differentiate from group header */
+.var-item.var-child::before {
+  background: var(--accent2);
+}
+
+/* Container for the distinguisher tag pills */
+.var-child-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Distinguisher pill — shows what is unique about this member */
+.var-diff-tag {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(124, 58, 237, 0.09);
+  color: var(--accent2);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Fallback index pill (shown when no distinguisher can be computed) */
+.var-diff-tag--idx {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+
 
 .colormap-row {
   display: flex;

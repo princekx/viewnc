@@ -410,6 +410,107 @@ initPlotOptionsListeners();
 
 
 // ── Variable List ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute compact human-readable "distinguisher" tags for one cube
+ * relative to all other cubes that share the same canonical name.
+ *
+ * Strategy (in priority order):
+ *   1. aux_coords that differ  → scalar pressure levels, ensemble member, etc.
+ *      GRIB2 puts scalar level coords here (not in dim_coords), so this is
+ *      the primary path for pressure-level GRIB2 fields.
+ *   2. dim_coords that differ  → e.g. time range, spatial resolution.
+ *   3. Units differ            → show the unit string.
+ *   4. Shape differs           → show shape tuple.
+ *
+ * @param {object}   cube     - the cube whose tags to compute
+ * @param {object[]} siblings - all cubes in the same name-group (including cube)
+ * @returns {string[]} array of short display strings, e.g. ["pressure: 500 Pa"]
+ */
+function _varDistinguisher(cube, siblings) {
+  if (siblings.length <= 1) return [];
+
+  const tags = [];
+
+  // Generic helper: format a numeric coord value compactly.
+  // Avoids scientific notation — whole numbers shown as-is, others with 3 sig-figs.
+  const fmtN = n => {
+    if (typeof n !== 'number') return String(n);
+    if (Number.isInteger(n)) return String(n);
+    const s3 = parseFloat(n.toPrecision(3));
+    return Number.isInteger(s3) ? String(s3) : String(s3);
+  };
+
+  const buildTag = (cname, coord) => {
+    if (!coord) return `no ${cname}`;
+    let val;
+    if (coord.size === 1) {
+      const v = coord.values?.[0] ?? coord.min;
+      val = typeof v === 'string' ? v : fmtN(Number(v));
+    } else {
+      val = `${fmtN(coord.min)}\u2013${fmtN(coord.max)} (${coord.size})`;
+    }
+    const units = coord.units && coord.units !== '1' && coord.units !== 'unknown'
+      ? ` ${coord.units}` : '';
+    return `${cname}: ${val}${units}`;
+  };
+
+  // Coords that are uninformative as distinguishers (present in every GRIB2 message)
+  const _SKIP = new Set([
+    'forecast_reference_time', 'forecast_period', 'time', 'realization',
+    'latitude', 'longitude', 'grid_latitude', 'grid_longitude',
+  ]);
+
+  // ── 1. aux_coords that differ (GRIB2 scalar pressure levels live here) ─────
+  // iris assigns scalar coordinate (no data dimension) to aux_coords.
+  // For GRIB2 this includes pressure / height / model_level, ensemble member, etc.
+  const allAuxNames = new Set();
+  siblings.forEach(s => (s.aux_coords || []).forEach(c => allAuxNames.add(c.name)));
+
+  allAuxNames.forEach(cname => {
+    if (_SKIP.has(cname)) return;
+    const vals = siblings.map(s => {
+      const c = (s.aux_coords || []).find(x => x.name === cname);
+      return c ? JSON.stringify([c.min, c.max, c.size]) : '__missing__';
+    });
+    if (new Set(vals).size <= 1) return; // identical across all – not a distinguisher
+    const myCoord = (cube.aux_coords || []).find(x => x.name === cname);
+    tags.push(buildTag(cname, myCoord));
+  });
+
+  if (tags.length > 0) return tags;
+
+  // ── 2. dim_coords that differ ─────────────────────────────────────────────
+  const allDimNames = new Set();
+  siblings.forEach(s => s.dim_coords.forEach(c => allDimNames.add(c.name)));
+
+  allDimNames.forEach(cname => {
+    if (_SKIP.has(cname)) return;
+    const vals = siblings.map(s => {
+      const c = s.dim_coords.find(x => x.name === cname);
+      return c ? JSON.stringify([c.min, c.max, c.size]) : '__missing__';
+    });
+    if (new Set(vals).size <= 1) return;
+    const myCoord = cube.dim_coords.find(x => x.name === cname);
+    tags.push(buildTag(cname, myCoord));
+  });
+
+  if (tags.length > 0) return tags;
+
+  // ── 3. Units differ ───────────────────────────────────────────────────────
+  const unitSet = new Set(siblings.map(s => s.units));
+  if (unitSet.size > 1) {
+    tags.push(cube.units || 'unknown units');
+    return tags;
+  }
+
+  // ── 4. Shape differs ──────────────────────────────────────────────────────
+  const shapeSet = new Set(siblings.map(s => s.shape.join('×')));
+  if (shapeSet.size > 1) tags.push(cube.shape.join(' × '));
+
+  return tags;
+}
+
 function renderVarList() {
   const list = $('var-list');
   list.innerHTML = '';
@@ -421,19 +522,84 @@ function renderVarList() {
 
   $('var-count').textContent = STATE.cubes.length;
 
-  STATE.cubes.forEach((cube, listIdx) => {
-    const item = document.createElement('div');
-    item.className = 'var-item';
-    item.id = `var-item-${cube.index}`;
-    item.onclick = () => selectVar(cube.index);
+  // ── Group cubes by canonical name ──────────────────────────────────────────
+  const groups = new Map(); // name → cube[]
+  STATE.cubes.forEach(cube => {
+    const key = cube.name || '(unnamed)';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(cube);
+  });
 
-    const shape = cube.shape.join(' × ');
-    item.innerHTML = `
-      <div class="var-name" title="${cube.name}">${cube.name || '(unnamed)'}</div>
-      <span class="var-shape">${shape}</span>
-      <span class="var-units" title="${cube.units}">${cube.units}</span>
-    `;
-    list.appendChild(item);
+  groups.forEach((members, groupName) => {
+    if (members.length === 1) {
+      // ── Singleton: render a plain var-item (no grouping chrome) ──────────
+      const cube = members[0];
+      const item = document.createElement('div');
+      item.className = 'var-item';
+      item.id = `var-item-${cube.index}`;
+      item.onclick = () => selectVar(cube.index);
+      const shape = cube.shape.join(' × ');
+      item.innerHTML = `
+        <div class="var-name" title="${cube.name}">${groupName}</div>
+        <span class="var-shape">${shape}</span>
+        <span class="var-units" title="${cube.units}">${cube.units}</span>
+      `;
+      list.appendChild(item);
+    } else {
+      // ── Multi-member group: collapsible header + child items ──────────────
+      const groupEl = document.createElement('div');
+      groupEl.className = 'var-group';
+
+      // Determine shared shape prefix for the header subtitle
+      const shapesSame = members.every(m => m.shape.join('×') === members[0].shape.join('×'));
+      const sharedShape = shapesSame ? members[0].shape.join(' × ') : `${members.length} variants`;
+      const sharedUnits = members.every(m => m.units === members[0].units)
+        ? members[0].units : '…';
+
+      const header = document.createElement('div');
+      header.className = 'var-group-header';
+      header.innerHTML = `
+        <span class="var-group-chevron">▶</span>
+        <div class="var-group-name" title="${groupName}">${groupName}</div>
+        <span class="var-group-count">${members.length}</span>
+        <span class="var-shape">${sharedShape}</span>
+        <span class="var-units" title="${sharedUnits}">${sharedUnits}</span>
+      `;
+
+      const body = document.createElement('div');
+      body.className = 'var-group-body';
+
+      // Toggle collapse/expand
+      let expanded = true; // start expanded so user sees all members
+      header.addEventListener('click', () => {
+        expanded = !expanded;
+        groupEl.classList.toggle('collapsed', !expanded);
+      });
+
+      // Build child rows
+      members.forEach(cube => {
+        const tags = _varDistinguisher(cube, members);
+
+        const child = document.createElement('div');
+        child.className = 'var-item var-child';
+        child.id = `var-item-${cube.index}`;
+        child.onclick = () => selectVar(cube.index);
+
+        const tagsHtml = tags.map(t =>
+          `<span class="var-diff-tag" title="${t}">${t}</span>`
+        ).join('');
+
+        child.innerHTML = `
+          <div class="var-child-tags">${tagsHtml || `<span class="var-diff-tag var-diff-tag--idx">#${cube.index}</span>`}</div>
+          <span class="var-shape mono">${cube.shape.join('×')}</span>
+        `;
+        body.appendChild(child);
+      });
+
+      groupEl.appendChild(header);
+      groupEl.appendChild(body);
+      list.appendChild(groupEl);
+    }
   });
 }
 
