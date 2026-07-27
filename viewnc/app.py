@@ -58,7 +58,7 @@ def index():
 
 # ── File Browser ──────────────────────────────────────────────────────────────
 
-_DATA_EXTS = {".nc", ".pp", ".grb", ".grib", ".grib2", ".grb2"}
+_DATA_EXTS = {".nc", ".pp", ".grb", ".grib", ".grib1", ".grib2", ".grb1", ".grb2"}
 
 
 @app.route("/api/browse")

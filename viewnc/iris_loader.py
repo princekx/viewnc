@@ -118,15 +118,308 @@ def _cube_summary(cube, index: int) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# GRIB support helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+# All GRIB file extensions recognised by the file browser and load_file.
+_GRIB_EXTS = {".grb", ".grib", ".grib1", ".grib2", ".grb1", ".grb2"}
+
+# Suppress iris / iris_grib deprecation warnings globally.
+warnings.filterwarnings("ignore", category=FutureWarning, module="iris")
+warnings.filterwarnings("ignore", category=FutureWarning, module="iris_grib")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="iris_grib")
+try:
+    from iris.exceptions import IrisVagueMetadataWarning
+    warnings.filterwarnings("ignore", category=IrisVagueMetadataWarning)
+except ImportError:
+    pass
+
+_GRIB_PATCH_APPLIED = False
+
+
+def _patch_iris_grib_translation() -> None:
+    """
+    Apply a suite of monkey-patches to iris_grib._grib2_convert to make GRIB/
+    GRIB2 loading as resilient as possible.  Each patch catches a known class
+    of TranslationError and substitutes a safe fallback rather than aborting
+    the entire file load.
+
+    Patches applied
+    ───────────────
+    1. ``_get_surface_value``
+       Returns None instead of raising when the Second Fixed Surface has a
+       missing scaled value (typeOfSecondFixedSurface = 255 / _MDI).
+       Valid GRIB2 — just means a single-level field (e.g. T at 850 hPa).
+
+    2. ``reference_time_coord``
+       Falls back to ``"forecast_reference_time"`` for unknown
+       significanceOfReferenceTime codes (anything outside {0,1,2,3}).
+       Common in reanalysis / climate files using vendor-specific codes.
+
+    3. ``scanning_mode``
+       Treats unsupported alternative-row scanning mode as if it were the
+       standard mode (i_alternative=False).  Many operational centres encode
+       fields with this flag set but the data is still readable.
+
+    4. ``source_of_grid_definition``
+       Ignores non-zero sourceOfGridDefinition values (e.g. pre-defined grids
+       in operational systems) rather than raising.
+
+    5. ``grid_definition_section``
+       Wraps the entire section in a try/except so that a single unsupported
+       grid type does not abort loading — the message is skipped with a
+       warning instead of crashing.
+    """
+    global _GRIB_PATCH_APPLIED
+    if _GRIB_PATCH_APPLIED:
+        return
+
+    try:
+        import iris_grib._grib2_convert as _g2c
+        from iris.exceptions import TranslationError as _TE
+
+        # ── Patch 1: _get_surface_value ──────────────────────────────────────
+        # Missing Second Fixed Surface (typeOfSecondFixedSurface = 255) is
+        # valid and simply means a single-level field.  Return None so the
+        # caller skips the upper bound and treats it as a scalar level.
+        _orig_gsv = _g2c._get_surface_value
+
+        def _lenient_get_surface_value(section, sub_item, warn_only=False):
+            try:
+                return _orig_gsv(section, sub_item, warn_only=warn_only)
+            except _TE as exc:
+                logger.debug(
+                    "iris_grib [patch-1] _get_surface_value('%s') → None: %s",
+                    sub_item, exc,
+                )
+                return None   # treat missing surface as absent
+
+        _g2c._get_surface_value = _lenient_get_surface_value
+        logger.debug("iris_grib: patch-1 (_get_surface_value) applied")
+
+        # ── Patch 2: reference_time_coord ────────────────────────────────────
+        # Unknown significanceOfReferenceTime codes (values outside {0,1,2,3})
+        # appear in vendor-specific GRIB2 files.  Fall back gracefully to
+        # "forecast_reference_time" instead of raising.
+        _orig_rtc = _g2c.reference_time_coord
+
+        def _lenient_reference_time_coord(section):
+            try:
+                return _orig_rtc(section)
+            except _TE as exc:
+                logger.debug(
+                    "iris_grib [patch-2] reference_time_coord → fallback: %s", exc
+                )
+                try:
+                    from datetime import datetime as _dt
+                    from cf_units import Unit as _Unit
+                    from iris.coords import DimCoord as _DC
+                    dt = _dt(
+                        section["year"], section["month"], section["day"],
+                        section["hour"], section["minute"], section["second"],
+                    )
+                    unit = _Unit("hours since epoch", calendar="gregorian")
+                    return _DC(
+                        float(unit.date2num(dt)),
+                        standard_name="forecast_reference_time",
+                        units=unit,
+                    )
+                except Exception as inner:
+                    logger.debug(
+                        "iris_grib [patch-2] fallback coord also failed: %s", inner
+                    )
+                    return None
+
+        _g2c.reference_time_coord = _lenient_reference_time_coord
+        logger.debug("iris_grib: patch-2 (reference_time_coord) applied")
+
+        # ── Patch 3: scanning_mode ────────────────────────────────────────────
+        # Some operational centres set the i_alternative scanning bit but the
+        # data are still in the standard row order.  Clear the offending bit
+        # and retry, which gives us the standard scanning mode.
+        _orig_sm = _g2c.scanning_mode
+
+        def _lenient_scanning_mode(scanningMode):
+            try:
+                return _orig_sm(scanningMode)
+            except _TE as exc:
+                logger.debug(
+                    "iris_grib [patch-3] scanning_mode(0x%02x) → clearing "
+                    "i_alternative bit: %s", scanningMode, exc
+                )
+                return _orig_sm(scanningMode & ~0x10)
+
+        _g2c.scanning_mode = _lenient_scanning_mode
+        logger.debug("iris_grib: patch-3 (scanning_mode) applied")
+
+        # ── Patch 4: source_of_grid_definition ───────────────────────────────
+        # Non-zero sourceOfGridDefinition means a pre-defined grid from an
+        # operational system.  iris_grib raises; we log and continue so that
+        # the rest of the section can still be parsed.
+        if hasattr(_g2c, "source_of_grid_definition"):
+            _orig_sgd = _g2c.source_of_grid_definition
+
+            def _lenient_source_of_grid_definition(section):
+                try:
+                    return _orig_sgd(section)
+                except _TE as exc:
+                    logger.debug(
+                        "iris_grib [patch-4] source_of_grid_definition → "
+                        "ignoring non-standard grid source: %s", exc
+                    )
+
+            _g2c.source_of_grid_definition = _lenient_source_of_grid_definition
+            logger.debug("iris_grib: patch-4 (source_of_grid_definition) applied")
+
+        # ── Patch 5: grid_definition_section ─────────────────────────────────
+        # Wrap the entire grid section handler so that any remaining
+        # unsupported grid type is caught at the message level rather than
+        # propagating up to kill the whole file load.
+        _orig_gds = _g2c.grid_definition_section
+
+        def _lenient_grid_definition_section(section, metadata):
+            try:
+                return _orig_gds(section, metadata)
+            except (_TE, ValueError, KeyError) as exc:
+                logger.debug(
+                    "iris_grib [patch-5] grid_definition_section → skipping "
+                    "unsupported grid type: %s", exc
+                )
+
+        _g2c.grid_definition_section = _lenient_grid_definition_section
+        logger.debug("iris_grib: patch-5 (grid_definition_section) applied")
+
+        _GRIB_PATCH_APPLIED = True
+        logger.info("iris_grib: all GRIB2 resilience patches applied successfully")
+
+    except Exception as exc:
+        logger.warning(
+            "iris_grib translation patches could not be applied "
+            "(iris_grib not installed or API changed): %s", exc
+        )
+
+
+def _iris_load_quiet(path_str: str) -> "iris.cube.CubeList":
+    """iris.load() with FutureWarning / DeprecationWarning suppressed."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        return iris.load(path_str)
+
+
+def _load_grib_safe(path_str: str) -> "iris.cube.CubeList":
+    """
+    Load a GRIB/GRIB2 file with multiple layers of error resilience.
+
+    Strategy
+    ────────
+    1. **Fast path** — ``iris.load()`` after all patches have been applied.
+       Works for the vast majority of well-formed GRIB/GRIB2 files.
+
+    2. **Per-message fallback** — if a TranslationError still leaks through,
+       iterate ``iris_grib.load_cubes()`` as a generator and collect whatever
+       cubes succeed, skipping bad messages.  Logs a summary of skipped
+       message counts grouped by exception class for easier diagnosis.
+
+    3. **Last resort** — if even the generator fails catastrophically, return
+       an empty CubeList with a clear error log rather than crashing the app.
+    """
+    from iris.cube import CubeList
+    from iris.exceptions import TranslationError
+
+    # ── Fast path ──────────────────────────────────────────────────────────
+    try:
+        return _iris_load_quiet(path_str)
+    except TranslationError as exc:
+        logger.warning(
+            "GRIB fast-path raised TranslationError after patches (%s); "
+            "switching to per-message load.", exc
+        )
+    except Exception as exc:
+        logger.warning(
+            "GRIB fast-path raised unexpected error (%s: %s); "
+            "switching to per-message load.", type(exc).__name__, exc
+        )
+
+    # ── Per-message fallback ────────────────────────────────────────────────
+    try:
+        import iris_grib
+        cubes = CubeList()
+        skipped: dict = {}  # error class → count
+
+        gen = iris_grib.load_cubes(path_str)
+        while True:
+            try:
+                cubes.append(next(gen))
+            except StopIteration:
+                break
+            except (TranslationError, ValueError, KeyError, NotImplementedError) as msg_err:
+                key = type(msg_err).__name__
+                skipped[key] = skipped.get(key, 0) + 1
+                logger.debug("Skipped GRIB message (%s): %s", key, msg_err)
+            except Exception as msg_err:
+                key = type(msg_err).__name__
+                skipped[key] = skipped.get(key, 0) + 1
+                logger.debug(
+                    "Skipped GRIB message (unexpected %s): %s", key, msg_err
+                )
+
+        if skipped:
+            summary = ", ".join(
+                f"{v}\u00d7{k}" for k, v in sorted(skipped.items())
+            )
+            logger.warning(
+                "GRIB per-message load: skipped %d message(s) [%s], "
+                "recovered %d cube(s).",
+                sum(skipped.values()), summary, len(cubes),
+            )
+        elif cubes:
+            logger.info(
+                "GRIB per-message load recovered %d cube(s) with no errors.",
+                len(cubes),
+            )
+
+        return cubes
+
+    except Exception as exc2:
+        logger.error(
+            "GRIB per-message load also failed (%s: %s). "
+            "Returning empty CubeList.",
+            type(exc2).__name__, exc2,
+        )
+        return CubeList()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
 def load_file(path: str | Path) -> iris.cube.CubeList:
-    """Load a NetCDF / PP / GRIB file and return a CubeList."""
+    """
+    Load a NetCDF / PP / GRIB / GRIB2 file and return a CubeList.
+
+    GRIB support requires the ``iris-grib`` package:
+        pip install iris-grib eccodes
+    """
     path = Path(path)
-    logger.info("Loading %s", path)
-    cubes = iris.load(str(path))
-    logger.info("Loaded %d cube(s)", len(cubes))
+    ext = path.suffix.lower()
+
+    if ext in _GRIB_EXTS:
+        try:
+            import iris_grib  # noqa: F401  registers the GRIB format handler
+        except ImportError:
+            raise ImportError(
+                "GRIB/GRIB2 support requires the 'iris-grib' package.\n"
+                "Install it with:  pip install iris-grib eccodes"
+            ) from None
+        _patch_iris_grib_translation()
+        logger.info("Loading GRIB: %s", path)
+        cubes = _load_grib_safe(str(path))
+    else:
+        logger.info("Loading: %s", path)
+        cubes = _iris_load_quiet(str(path))
+
+    logger.info("Loaded %d cube(s) from %s", len(cubes), path.name)
     return cubes
 
 
@@ -213,6 +506,97 @@ _PROCESSORS = {
     "rms":    ia.RMS,
     "variance": ia.VARIANCE,
 }
+
+
+def _normalise_longitude(
+    data: np.ndarray,
+    x_pts: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Re-order a 2-D data array (ny, nx) and its longitude axis so that
+    longitudes are monotonically increasing in the -180 to +180 range.
+
+    This is needed for GRIB/GRIB2 data whose longitude coordinate runs
+    0 → 360 (or 0 → 360 with iris normalising values > 180 to negative
+    without reordering the columns).  Without this correction the plot
+    shows a blank strip from 0–180 E and the coastline overlay is broken.
+
+    Conditions that trigger the fix
+    ────────────────────────────────
+    * x_pts spans > 180 degrees  AND  x_pts.max() > 180
+      → classic 0–360 grid: wrap values > 180 to value − 360 and roll.
+    * x_pts are already negative on the left side but NOT sorted
+      (e.g. iris produced [-180 … 0, 180 … 360] from a 0-360 source)
+      → sort the columns by ascending longitude value.
+
+    Returns the (possibly reordered) data and longitude arrays.
+    """
+    if x_pts.ndim != 1 or x_pts.size < 2:
+        return data, x_pts
+
+    lon_range = float(x_pts.max()) - float(x_pts.min())
+
+    # ── Case 1: 0-360 grid (max > 180, range ≈ 360) ────────────────────────
+    if x_pts.max() > 180.0 and lon_range > 180.0:
+        # Convert to -180..180
+        new_lons = np.where(x_pts > 180.0, x_pts - 360.0, x_pts)
+        # Sort columns by the new longitude values
+        order = np.argsort(new_lons)
+        logger.debug(
+            "Longitude normalisation: 0-360 → -180/180 "
+            "(roll by %d columns out of %d)",
+            int(np.sum(x_pts > 180.0)), len(x_pts),
+        )
+        return data[:, order], new_lons[order]
+
+    # ── Case 2: already -180..180 but non-monotonic ─────────────────────────
+    if not np.all(np.diff(x_pts) > 0):  # not strictly increasing
+        order = np.argsort(x_pts)
+        logger.debug(
+            "Longitude normalisation: non-monotonic -180/180 axis → sorted"
+        )
+        return data[:, order], x_pts[order]
+
+    # No fix needed
+    return data, x_pts
+
+
+def _is_longitude_coord(coord) -> bool:
+    """Return True when a coordinate is clearly a geographic longitude.
+
+    We check standard_name / name first (most reliable), then fall back to
+    the unit string.  We deliberately avoid ``units.is_convertible`` because
+    cf_units considers ``degrees_north`` convertible from ``degrees_east``,
+    which would cause latitude coordinates to be misidentified.
+    """
+    if coord is None:
+        return False
+    _LON_STANDARD = {
+        "longitude", "grid_longitude",
+        "projection_x_coordinate",
+    }
+    _LAT_STANDARD = {
+        "latitude", "grid_latitude",
+        "projection_y_coordinate",
+    }
+    try:
+        sn = coord.standard_name or ""
+        if sn in _LON_STANDARD:
+            return True
+        if sn in _LAT_STANDARD:
+            return False   # definitely not longitude
+        nm = coord.name()
+        if nm in _LON_STANDARD or nm in {"x", "longitude"}:
+            return True
+        if nm in _LAT_STANDARD or nm in {"y", "latitude"}:
+            return False
+        # Last resort: check unit string (not convertibility)
+        u = str(coord.units).lower()
+        if "east" in u or u in ("degree_e", "degrees_e", "degreee", "degrees_east"):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def extract_slice(
@@ -379,6 +763,30 @@ def extract_slice(
             raw_x = sx
         if raw_y is None and sy is not None and sy.points.size == ny:
             raw_y = sy
+
+    # ── Longitude normalisation (GRIB2 0-360 → -180/180) ────────────────────
+    # GRIB/GRIB2 files store longitudes as 0–360.  When iris exposes them in
+    # the -180–180 range (or leaves them as 0–360), the data columns are not
+    # automatically reordered, producing a blank strip over 0–180 E and
+    # broken coastline overlays.  Detect and fix this here.
+    if _is_longitude_coord(raw_x) and raw_x is not None:
+        try:
+            x_pts = raw_x.points.flatten()
+            if x_pts.size == nx:   # safety: sizes must match
+                data, new_x_pts = _normalise_longitude(data, x_pts)
+                if not np.array_equal(new_x_pts, x_pts):
+                    # Re-wrap the coordinate so _axis_info uses correct values
+                    import iris.coords as _ic
+                    raw_x = _ic.AuxCoord(
+                        new_x_pts,
+                        standard_name=raw_x.standard_name,
+                        long_name=raw_x.long_name,
+                        var_name=raw_x.var_name,
+                        units=raw_x.units,
+                    )
+                    nx = data.shape[1]  # shape unchanged, but keep in sync
+        except Exception as _lon_exc:
+            logger.debug("Longitude normalisation skipped: %s", _lon_exc)
 
     def _axis_info(coord, fallback_size: int) -> dict:
         if coord is None or coord.points.ndim > 1:

@@ -2495,7 +2495,9 @@ const EXT_ICONS = {
   '.pp': '📊',
   '.grb': '🌬️',
   '.grib': '🌬️',
+  '.grib1': '🌬️',
   '.grib2': '🌬️',
+  '.grb1': '🌬️',
   '.grb2': '🌬️',
 };
 
@@ -2608,7 +2610,7 @@ function renderBrowserFiles(files) {
       <div class="browser-empty">
         <div class="browser-empty-icon">📭</div>
         <div>No supported data files here</div>
-        <div style="font-size:0.65rem;margin-top:4px;color:var(--text-muted)">.nc · .pp · .grb · .grib2</div>
+        <div style="font-size:0.65rem;margin-top:4px;color:var(--text-muted)">.nc · .pp · .grb · .grib · .grib2</div>
       </div>`;
     return;
   }
