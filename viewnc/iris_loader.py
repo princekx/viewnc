@@ -394,9 +394,77 @@ def _load_grib_safe(path_str: str) -> "iris.cube.CubeList":
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _merge_cubelist(cubes: "iris.cube.CubeList") -> "iris.cube.CubeList":
+    """
+    Attempt to merge cubes that share the same name/metadata but differ only
+    in one or more scalar coordinates (e.g. GRIB2 pressure levels, ensemble
+    members, forecast times).
+
+    ``iris.cube.CubeList.merge()`` detects scalar aux_coords that vary across
+    cubes and promotes them into a new dimension, turning N single-level cubes
+    into one cube with a ``pressure`` (or equivalent) dimension.
+
+    Strategy
+    ────────
+    1. Group cubes by their canonical name (``cube.name()``).
+    2. For groups with > 1 member, attempt ``CubeList(group).merge()``.
+       • On success  → replace the group with the merged cube(s).
+       • On failure  → keep the originals and log a warning.
+    3. Single-member groups are passed through unchanged.
+
+    The returned CubeList is re-indexed so ``cube.index`` remains consistent
+    with the CubeList position used by the rest of the app.
+    """
+    from iris.cube import CubeList
+    import iris.util
+
+    if not cubes:
+        return cubes
+
+    # Group by canonical name
+    groups: dict[str, list] = {}
+    for cube in cubes:
+        key = cube.name() or "(unnamed)"
+        groups.setdefault(key, []).append(cube)
+
+    merged: list = []
+    for name, group in groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+
+        # Attempt to unify time units before merging (required by iris.merge)
+        try:
+            iris.util.unify_time_units(group)
+        except Exception:
+            pass
+
+        try:
+            result = CubeList(group).merge()
+            n_in, n_out = len(group), len(result)
+            if n_out < n_in:
+                logger.info(
+                    "Merged %d '%s' cube(s) → %d cube(s) (gained level/time dim)",
+                    n_in, name, n_out,
+                )
+            merged.extend(result)
+        except Exception as exc:
+            logger.debug(
+                "Could not merge %d '%s' cube(s): %s — keeping originals",
+                len(group), name, exc,
+            )
+            merged.extend(group)
+
+    return CubeList(merged)
+
+
 def load_file(path: str | Path) -> iris.cube.CubeList:
     """
     Load a NetCDF / PP / GRIB / GRIB2 file and return a CubeList.
+
+    After loading, cubes that share the same name but differ only in scalar
+    coordinates (e.g. GRIB2 pressure levels) are automatically merged into a
+    single cube with a proper level dimension.
 
     GRIB support requires the ``iris-grib`` package:
         pip install iris-grib eccodes
@@ -420,7 +488,14 @@ def load_file(path: str | Path) -> iris.cube.CubeList:
         cubes = _iris_load_quiet(str(path))
 
     logger.info("Loaded %d cube(s) from %s", len(cubes), path.name)
+
+    # Merge cubes that share the same variable name but differ only in scalar
+    # coordinates (e.g. pressure levels in GRIB2).
+    cubes = _merge_cubelist(cubes)
+    logger.info("After merge: %d cube(s)", len(cubes))
+
     return cubes
+
 
 
 def cubelist_metadata(cubes: iris.cube.CubeList) -> list[dict]:
