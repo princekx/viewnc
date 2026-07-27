@@ -75,7 +75,7 @@ def api_browse():
           "files": [{"name":str, "path":str, "size":int, "mtime":float}, ...]
         }
     """
-    raw = request.args.get("path", "").strip() or str(Path.home())
+    raw = request.args.get("path", "").strip() or os.environ.get("HOME") or os.path.expanduser("~")
     p = Path(raw).resolve()
 
     if not p.exists() or not p.is_dir():
@@ -110,7 +110,7 @@ def api_browse():
         pass
 
     # Build breadcrumb list
-    parts = p.parts  # ('/', 'home', 'prince', ...)
+    parts = p.parts  # ('/', 'home', 'username', ...)
     parents = []
     for i, part in enumerate(parts):
         full = str(Path(*parts[: i + 1])) if i > 0 else "/"
