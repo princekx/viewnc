@@ -259,7 +259,7 @@ def api_location_series():
         # series at this location.
         if not extra_coords:
             # 2-D cube: plot a zonal profile (full longitude row at clicked latitude)
-            row = np.ma.filled(cube.data[yi, :], np.nan).astype(float)
+            row = np.ma.filled(cube[yi, :].data, np.nan).astype(float)
             lon_vals = xpts.tolist()
             values = [None if np.isnan(v) else float(v) for v in row]
             return jsonify({
@@ -361,25 +361,19 @@ def api_location_series():
         if _ckey in _loc_series_cache:
             return jsonify(_loc_series_cache[_ckey])
 
-        # ── Vectorised extraction ──────────────────────────────────────────────
-        # Load ALL data in a single pass.  For lazy/dask-backed cubes this
-        # issues ONE disk read instead of one per time-step.
-        raw = np.ma.filled(sliced.data, np.nan).astype(float)
-
-        # Clamp spatial indices to actual (possibly downsampled) shape
-        ny_raw, nx_raw = raw.shape[-2], raw.shape[-1]
+        # Clamp spatial indices to actual shape of the sliced cube
+        ny_raw, nx_raw = sliced.shape[-2], sliced.shape[-1]
         yi_c = min(yi, ny_raw - 1)
         xi_c = min(xi, nx_raw - 1)
 
-        # Build index that fixes the two spatial dims while keeping everything
-        # else (i.e. the series dim, plus any residual dims) as slice(None).
-        pt_idx = tuple(
-            yi_c if d == raw.ndim - 2 else
-            xi_c if d == raw.ndim - 1 else
-            slice(None)
-            for d in range(raw.ndim)
-        )
-        series_arr = raw[pt_idx].flatten()   # 1-D, length == n_series
+        # ── Vectorised extraction ──────────────────────────────────────────────
+        # Index the cube to retrieve only the 1D series before loading data.
+        # For lazy/dask-backed cubes, this issues ONE disk read of exactly
+        # the required column/series points, instead of loading the whole grid.
+        sliced_idx = tuple(slice(None) for _ in range(sliced.ndim - 2)) + (yi_c, xi_c)
+        sliced_pt = sliced[sliced_idx]
+        raw = np.ma.filled(sliced_pt.data, np.nan).astype(float)
+        series_arr = raw.flatten()   # 1-D, length == n_series
         series_vals = [None if np.isnan(v) else float(v) for v in series_arr]
 
 
