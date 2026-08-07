@@ -149,6 +149,9 @@ and choose which dimension to plot along:
 Each axis opens its own independent **floating window** (draggable, resizable).  
 Multiple clicks on the same axis **add traces** for comparison.
 
+**Lazy coordinate-first slicing:**  
+To ensure high performance even with multi-gigabyte files on remote network shares, the backend uses **lazy indexing**. Instead of loading the entire multidimensional grid into memory to slice it, the backend indexes the lazy coordinates *first*. Only the specific 1-D series/profile of data for the clicked latitude/longitude grid point is fetched from the disk/cache, resulting in instantaneous click-to-plot performance.
+
 ### Per-window export
 
 | Button | Format | Notes |
