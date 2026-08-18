@@ -387,9 +387,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           };
 
           // Copy settings bar inputs
-          ['plot-type-select', 'symmetric-toggle', 'marginal-toggle', 
-           'coastline-res', 'coastline-color', 'contour-levels', 'contour-min', 
-           'contour-max', 'contour-filled', 'rb-x0', 'rb-x1', 'rb-y0', 'rb-y1'].forEach(copyVal);
+          ['plot-type-select', 'symmetric-toggle', 'marginal-toggle',
+            'coastline-res', 'coastline-color', 'contour-levels', 'contour-min',
+            'contour-max', 'contour-filled', 'rb-x0', 'rb-x1', 'rb-y0', 'rb-y1'].forEach(copyVal);
 
           // Copy colormap specifically
           const cmap = pDoc.getElementById('colormap-select')?.value;
