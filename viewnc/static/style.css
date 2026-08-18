@@ -2180,12 +2180,10 @@ body {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.28);
-  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 600;
-  animation: fadeIn 0.15s ease;
 }
 
 .axis-picker-backdrop.hidden {
@@ -2199,20 +2197,7 @@ body {
   box-shadow: 0 12px 48px rgba(15, 23, 42, 0.22), 0 2px 12px rgba(15, 23, 42, 0.10);
   padding: 0;
   width: min(340px, 90vw);
-  animation: axisPickerPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   overflow: hidden;
-}
-
-@keyframes axisPickerPop {
-  from {
-    opacity: 0;
-    transform: scale(0.88) translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 
 .axis-picker-header {
@@ -2255,23 +2240,21 @@ body {
 }
 
 .axis-picker-hint {
-  font-size: 0.72rem;
-  color: var(--text-muted, #94a3b8);
-  padding: 10px 16px 4px;
+  display: none; /* Hide the verbose hint */
 }
 
 .axis-picker-coords {
   font-size: 0.68rem;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text-muted, #94a3b8);
-  padding: 0 16px 12px;
+  padding: 8px 16px 12px;
 }
 
 .axis-picker-options {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 16px 4px;
+  padding: 12px 16px 4px;
 }
 
 .axis-picker-btn {
@@ -2285,20 +2268,13 @@ body {
   border-radius: 9px;
   cursor: pointer;
   text-align: left;
-  transition: all 0.15s ease;
   font-family: inherit;
-  animation: fadeIn 0.12s ease both;
 }
 
 .axis-picker-btn:hover {
   background: var(--bg-hover, #eff6ff);
   border-color: var(--accent, #2563eb);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
-  transform: translateY(-1px);
-}
-
-.axis-picker-btn:active {
-  transform: translateY(0);
 }
 
 .axis-picker-btn-icon {
@@ -2309,6 +2285,9 @@ body {
 .axis-picker-btn-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .axis-picker-btn-name {
@@ -2316,15 +2295,21 @@ body {
   font-weight: 600;
   color: var(--text-primary, #0f172a);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
-.axis-picker-btn-meta {
-  font-size: 0.67rem;
+.axis-picker-btn-essential {
+  font-size: 0.7rem;
   color: var(--text-muted, #94a3b8);
+  font-weight: normal;
+  margin-left: 6px;
   font-family: 'JetBrains Mono', monospace;
-  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+  text-align: right;
 }
 
 .axis-picker-btn-arrow {

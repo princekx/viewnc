@@ -1871,22 +1871,16 @@ function showAxisPicker(xClick, yClick, meta, xVals, yVals) {
   const opts = $('axis-picker-options');
   opts.innerHTML = '';
 
-  allAxes.forEach((ax, i) => {
+  allAxes.forEach(ax => {
     const btn = document.createElement('button');
     btn.className = 'axis-picker-btn';
     if (ax.spatial) btn.classList.add('axis-picker-btn-spatial');
-    btn.style.animationDelay = `${i * 0.04}s`;
-    const unitsStr = ax.units ? `${ax.units} · ` : '';
-    const hint = ax.spatial
-      ? (ax.name === meta.x.name
-        ? 'longitude profile at clicked φ'
-        : 'latitude profile at clicked λ')
-      : `${ax.npts} points`;
+    const essentialInfo = ax.units ? `(${ax.npts} ${ax.units})` : `(${ax.npts})`;
     btn.innerHTML = `
       <span class="axis-picker-btn-icon">${axisIcon(ax.name)}</span>
       <span class="axis-picker-btn-body">
         <span class="axis-picker-btn-name">${ax.name}</span>
-        <span class="axis-picker-btn-meta">${unitsStr}${hint}</span>
+        <span class="axis-picker-btn-essential">${essentialInfo}</span>
       </span>
       <span class="axis-picker-btn-arrow">›</span>
     `;
