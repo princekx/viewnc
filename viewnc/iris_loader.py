@@ -458,43 +458,92 @@ def _merge_cubelist(cubes: "iris.cube.CubeList") -> "iris.cube.CubeList":
     return CubeList(merged)
 
 
-def load_file(path: str | Path) -> iris.cube.CubeList:
+def resolve_paths(path_input: str | list[str] | Path | list[Path]) -> list[Path]:
     """
-    Load a NetCDF / PP / GRIB / GRIB2 file and return a CubeList.
+    Resolves a single string (glob, comma-separated list, or single path),
+    or a list of paths, into a list of existing Path objects.
+    """
+    import glob
+    resolved = []
+    
+    # Convert single input or list to a list of strings
+    if isinstance(path_input, Path):
+        inputs = [str(path_input)]
+    elif isinstance(path_input, list):
+        inputs = [str(p) for p in path_input]
+    elif isinstance(path_input, str):
+        # Support comma-separated strings
+        if "," in path_input:
+            inputs = [p.strip() for p in path_input.split(",")]
+        else:
+            inputs = [path_input.strip()]
+    else:
+        inputs = []
+
+    for item in inputs:
+        if not item:
+            continue
+        # Handle glob wildcard expansion
+        if any(char in item for char in ["*", "?", "[", "]"]):
+            matches = glob.glob(item, recursive=True)
+            for m in sorted(matches):
+                p = Path(m)
+                if p.is_file():
+                    resolved.append(p)
+        else:
+            p = Path(item)
+            if p.is_file():
+                resolved.append(p)
+            elif p.is_dir():
+                pass
+    return resolved
+
+
+def load_files(paths: str | list[str] | Path | list[Path]) -> iris.cube.CubeList:
+    """
+    Load one or more NetCDF / PP / GRIB / GRIB2 files and return a unified CubeList.
 
     After loading, cubes that share the same name but differ only in scalar
-    coordinates (e.g. GRIB2 pressure levels) are automatically merged into a
-    single cube with a proper level dimension.
-
-    GRIB support requires the ``iris-grib`` package:
-        pip install iris-grib eccodes
+    coordinates are automatically merged.
     """
-    path = Path(path)
-    ext = path.suffix.lower()
+    resolved_paths = resolve_paths(paths)
+    if not resolved_paths:
+        raise FileNotFoundError(f"No valid files found for: {paths}")
 
-    if ext in _GRIB_EXTS:
-        try:
-            import iris_grib  # noqa: F401  registers the GRIB format handler
-        except ImportError:
-            raise ImportError(
-                "GRIB/GRIB2 support requires the 'iris-grib' package.\n"
-                "Install it with:  pip install iris-grib eccodes"
-            ) from None
-        _patch_iris_grib_translation()
-        logger.info("Loading GRIB: %s", path)
-        cubes = _load_grib_safe(str(path))
-    else:
-        logger.info("Loading: %s", path)
-        cubes = _iris_load_quiet(str(path))
+    from iris.cube import CubeList
+    all_cubes = CubeList()
 
-    logger.info("Loaded %d cube(s) from %s", len(cubes), path.name)
+    for p in resolved_paths:
+        ext = p.suffix.lower()
+        if ext in _GRIB_EXTS:
+            try:
+                import iris_grib  # noqa: F401  registers the GRIB format handler
+            except ImportError:
+                raise ImportError(
+                    "GRIB/GRIB2 support requires the 'iris-grib' package.\n"
+                    "Install it with:  pip install iris-grib eccodes"
+                ) from None
+            _patch_iris_grib_translation()
+            logger.info("Loading GRIB: %s", p)
+            cubes = _load_grib_safe(str(p))
+        else:
+            logger.info("Loading: %s", p)
+            cubes = _iris_load_quiet(str(p))
+
+        logger.info("Loaded %d cube(s) from %s", len(cubes), p.name)
+        all_cubes.extend(cubes)
 
     # Merge cubes that share the same variable name but differ only in scalar
-    # coordinates (e.g. pressure levels in GRIB2).
-    cubes = _merge_cubelist(cubes)
-    logger.info("After merge: %d cube(s)", len(cubes))
+    # coordinates (e.g. pressure levels in GRIB2 or time across multiple files).
+    merged_cubes = _merge_cubelist(all_cubes)
+    logger.info("After merging all files: %d cube(s)", len(merged_cubes))
 
-    return cubes
+    return merged_cubes
+
+
+def load_file(path: str | Path) -> iris.cube.CubeList:
+    """Backward compatibility wrapper for load_files."""
+    return load_files(path)
 
 
 

@@ -20,6 +20,10 @@ pip install iris-grib eccodes
 viewnc /path/to/data.nc
 viewnc /path/to/forecast.grib2
 
+# Open multiple files or glob patterns
+viewnc /path/to/data1.nc /path/to/data2.nc
+viewnc "/path/to/forecasts/*.grib2"
+
 # Or start the server and use the built-in file browser
 viewnc --port 5765
 ```
@@ -179,7 +183,7 @@ To ensure high performance even with multi-gigabyte files on remote network shar
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/load` | POST | Load a file; returns cube metadata |
+| `/api/load` | POST | Load file(s); accepts single path, list, comma-separated, or glob pattern |
 | `/api/slice` | POST | Extract a 2-D slice respecting constraints |
 | `/api/location_series` | POST | Extract a 1-D series along any axis |
 | `/api/coastlines` | GET | Natural Earth coastline geometry |

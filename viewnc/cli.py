@@ -17,10 +17,10 @@ def main():
         description="Interactive iris data viewer for NetCDF / PP / GRIB files.",
     )
     parser.add_argument(
-        "filepath",
-        nargs="?",
+        "filepaths",
+        nargs="*",
         default=None,
-        help="Path to a NetCDF, PP or GRIB file to open on launch.",
+        help="Path to one or more NetCDF, PP or GRIB files/globs to open on launch.",
     )
     parser.add_argument(
         "--port",
@@ -37,7 +37,7 @@ def main():
 
     from viewnc.app import run
     run(
-        filepath=args.filepath,
+        filepath=args.filepaths if args.filepaths else None,
         port=args.port,
         open_browser=not args.no_browser,
     )

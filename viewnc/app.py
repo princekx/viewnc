@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 from flask import Flask, jsonify, render_template, request, send_file, Response
 
-from viewnc.iris_loader import cubelist_metadata, extract_slice, load_file
+from viewnc.iris_loader import cubelist_metadata, extract_slice, load_file, load_files, resolve_paths
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,23 +122,30 @@ def api_browse():
 @app.route("/api/load", methods=["POST"])
 def api_load():
     body = request.get_json(force=True)
-    filepath = body.get("filepath", "").strip()
+    filepath = body.get("filepath", "")
+    if isinstance(filepath, str):
+        filepath = filepath.strip()
     if not filepath:
         return jsonify({"error": "No filepath provided"}), 400
-    p = Path(filepath)
-    if not p.exists():
-        return jsonify({"error": f"File not found: {filepath}"}), 404
 
     try:
-        cubes = load_file(p)
+        resolved = resolve_paths(filepath)
+        if not resolved:
+            return jsonify({"error": f"No files found matching: {filepath}"}), 404
+
+        cubes = load_files(filepath)
         meta = cubelist_metadata(cubes)
-        _state["filepath"] = str(p)
+        
+        # Save state: filepath as list of strings if multiple, else a single string
+        paths_str = [str(r) for r in resolved]
+        _state["filepath"] = paths_str if len(paths_str) > 1 else paths_str[0]
         _state["cubes"] = cubes
         _state["metadata"] = meta
         _loc_series_cache.clear()   # invalidate any stale series cache
-        return jsonify({"status": "ok", "filepath": str(p), "cubes": meta})
+        
+        return jsonify({"status": "ok", "filepath": _state["filepath"], "cubes": meta})
     except Exception as exc:
-        logger.exception("Failed to load file")
+        logger.exception("Failed to load file(s)")
         return jsonify({"error": str(exc)}), 500
 
 
@@ -147,6 +154,24 @@ def api_metadata():
     if _state["metadata"] is None:
         return jsonify({"error": "No file loaded"}), 400
     return jsonify({"cubes": _state["metadata"], "filepath": _state["filepath"]})
+
+
+@app.route("/api/cube", defaults={"cube_index": 0})
+@app.route("/api/cube/<int:cube_index>")
+def api_cube(cube_index):
+    """
+    Return metadata for a specific cube in the loaded list.
+    If no index is provided in the address bar, it defaults to 0.
+    """
+    if _state["metadata"] is None:
+        return jsonify({"error": "No file loaded"}), 400
+    try:
+        cubes_meta = _state["metadata"]
+        if cube_index < 0 or cube_index >= len(cubes_meta):
+            return jsonify({"error": f"Cube index {cube_index} out of range (max is {len(cubes_meta)-1})"}), 400
+        return jsonify(cubes_meta[cube_index])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/slice", methods=["POST"])
@@ -900,21 +925,24 @@ def _maybe_downsample(arr: np.ndarray, max_size: int) -> np.ndarray:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def run(filepath: str | None = None, port: int = 5765, open_browser: bool = True):
+def run(filepath: str | list[str] | None = None, port: int = 5765, open_browser: bool = True):
     import threading
     import time
     import webbrowser
 
     if filepath:
-        from pathlib import Path as _P
-        from viewnc.iris_loader import load_file as _lf, cubelist_metadata as _cm
-        p = _P(filepath)
-        if p.exists():
-            cubes = _lf(p)
-            _state["filepath"] = str(p)
-            _state["cubes"] = cubes
-            _state["metadata"] = _cm(cubes)
-            logger.info("Pre-loaded: %s (%d cube(s))", p, len(cubes))
+        from viewnc.iris_loader import load_files, resolve_paths, cubelist_metadata as _cm
+        try:
+            resolved = resolve_paths(filepath)
+            if resolved:
+                cubes = load_files(filepath)
+                paths_str = [str(r) for r in resolved]
+                _state["filepath"] = paths_str if len(paths_str) > 1 else paths_str[0]
+                _state["cubes"] = cubes
+                _state["metadata"] = _cm(cubes)
+                logger.info("Pre-loaded: %s (%d cube(s))", _state["filepath"], len(cubes))
+        except Exception as exc:
+            logger.error("Failed to pre-load filepath %s: %s", filepath, exc)
 
     url = f"http://127.0.0.1:{port}"
 
