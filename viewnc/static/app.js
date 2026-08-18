@@ -397,6 +397,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             selectColormap(cmap);
           }
 
+          STATE.isFirstRenderOfVar = false;
+
           // 4. Automatically trigger plot rendering in this window!
           plotData();
         }
@@ -658,6 +660,7 @@ function renderVarList() {
 function selectVar(idx) {
   STATE.selectedIdx = idx;
   STATE.constraints = {};
+  STATE.isFirstRenderOfVar = true;
 
   // Update highlight
   document.querySelectorAll('.var-item').forEach(el => el.classList.remove('selected'));
@@ -1233,8 +1236,8 @@ function updateSliceTitle(cube, meta) {
 async function plotData() {
   if (STATE.selectedIdx === null) return;
 
-  const plotType = $('plot-type-select').value;
-  const colormap = $('colormap-select').value;
+  let plotType = $('plot-type-select').value;
+  let colormap = $('colormap-select').value;
 
   if (plotType === 'timeseries') {
     await plotTimeSeries(STATE.selectedIdx);
@@ -1252,6 +1255,57 @@ async function plotData() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    const cube = STATE.cubes.find(c => c.index === STATE.selectedIdx) ?? STATE.cubes[STATE.selectedIdx];
+
+    if (STATE.isFirstRenderOfVar && cube && result && result.data) {
+      const flat = result.data.flat().filter(v => v !== null && !isNaN(v));
+      if (flat.length > 0) {
+        // Safe min/max calculation to prevent stack overflow
+        let min = flat[0];
+        let max = flat[0];
+        for (let i = 1; i < flat.length; i++) {
+          const v = flat[i];
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+
+        const nameLower = ((cube.name || '') + ' ' + (cube.standard_name || '') + ' ' + (cube.long_name || '')).toLowerCase();
+        const isTemp = nameLower.includes('temp') || ['k', 'degc', 'deg_c', 'celsius'].includes((cube.units || '').toLowerCase());
+        const isPrecip = nameLower.includes('precip') || nameLower.includes('rain') || nameLower.includes('snow') || nameLower.includes('runoff') || nameLower.includes('flux');
+
+        if (min < 0 && max > 0) {
+          // Diverging, symmetric, and contour (levels)
+          colormap = 'RdBu_r';
+          selectColormap('RdBu_r');
+          $('symmetric-toggle').checked = true;
+          $('plot-type-select').value = 'contour';
+          plotType = 'contour';
+        } else if (isTemp) {
+          // Temperature: blue to red (RdBu_r)
+          colormap = 'RdBu_r';
+          selectColormap('RdBu_r');
+          $('symmetric-toggle').checked = false;
+          $('plot-type-select').value = 'heatmap';
+          plotType = 'heatmap';
+        } else if (isPrecip || (min >= 0 && Math.abs(min) < 1e-5)) {
+          // All positive with a minimum of 0 (e.g. precipitation): YlGnBu
+          colormap = 'YlGnBu';
+          selectColormap('YlGnBu');
+          $('symmetric-toggle').checked = false;
+          $('plot-type-select').value = 'heatmap';
+          plotType = 'heatmap';
+        } else {
+          // General default
+          colormap = 'Viridis';
+          selectColormap('Viridis');
+          $('symmetric-toggle').checked = false;
+          $('plot-type-select').value = 'heatmap';
+          plotType = 'heatmap';
+        }
+      }
+      STATE.isFirstRenderOfVar = false;
+    }
 
     render2D(result.data, result.meta, plotType, colormap);
   } catch (err) {
