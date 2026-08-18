@@ -517,7 +517,7 @@ body {
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
-  background: linear-gradient(90deg, rgba(37,99,235,0.06) 0%, rgba(255,255,255,0) 100%);
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.06) 0%, rgba(255, 255, 255, 0) 100%);
   cursor: pointer;
   user-select: none;
   transition: background var(--transition);
@@ -525,7 +525,7 @@ body {
 }
 
 .var-group-header:hover {
-  background: linear-gradient(90deg, rgba(37,99,235,0.11) 0%, rgba(255,255,255,0) 100%);
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.11) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
 .var-group.collapsed .var-group-header {
@@ -2240,7 +2240,8 @@ body {
 }
 
 .axis-picker-hint {
-  display: none; /* Hide the verbose hint */
+  display: none;
+  /* Hide the verbose hint */
 }
 
 .axis-picker-coords {
@@ -2316,4 +2317,110 @@ body {
   color: var(--text-muted, #cbd5e1);
   font-size: 0.8rem;
   flex-shrink: 0;
+}
+
+/* ── Month-filter panel ─────────────────────────────────────────────────────── */
+
+.month-filter-toggle {
+  margin-top: 4px;
+}
+
+.month-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.month-filter-btn:hover {
+  background: var(--bg-hover, #f1f5f9);
+  border-color: var(--accent, #2563eb);
+}
+
+.mf-icon {
+  font-size: 0.85rem;
+}
+
+.mf-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.mf-chevron {
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.month-filter-panel {
+  margin-top: 4px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* Season shortcut buttons */
+.mf-seasons {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.mf-season-btn {
+  flex: 1;
+  min-width: 36px;
+  padding: 3px 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 5px;
+  background: var(--bg, #ffffff);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted, #475569);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.mf-season-btn:hover {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-color: var(--accent, #2563eb);
+}
+
+/* Month checkbox grid (3 columns × 4 rows) */
+.mf-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px 6px;
+}
+
+.mf-month-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mf-month-label:hover {
+  color: var(--accent, #2563eb);
+}
+
+.mf-month-cb {
+  accent-color: var(--accent, #2563eb);
+  width: 12px;
+  height: 12px;
+  cursor: pointer;
 }

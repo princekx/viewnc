@@ -796,6 +796,32 @@ def extract_slice(
                 )
                 sub = sliced[idx_slices]
 
+                # ── Month filter (time coords only) ────────────────────────
+                # When the user picks specific months (e.g. DJF = [12,1,2]),
+                # keep only those time steps before aggregating.
+                month_filter = spec.get("months") if isinstance(spec, dict) else None
+                if month_filter and _is_time_coord(coord):
+                    try:
+                        sub_coord = sub.coord(coord_name)
+                        sub_pts   = sub_coord.points
+                        # Convert numeric time → cftime objects, extract .month
+                        dates      = sub_coord.units.num2date(sub_pts)
+                        keep_mask  = np.array([d.month in month_filter for d in dates])
+                        if keep_mask.any():
+                            # Build a dim-0-relative index list respecting ndim
+                            keep_indices = np.where(keep_mask)[0]
+                            sub_dim_idx  = sub.coord_dims(sub_coord)[0]
+                            sel_slices   = tuple(
+                                keep_indices if i == sub_dim_idx else slice(None)
+                                for i in range(sub.ndim)
+                            )
+                            sub = sub[sel_slices]
+                    except Exception as mf_exc:
+                        logger.warning(
+                            "Month filter for %s failed: %s; using full range",
+                            coord_name, mf_exc,
+                        )
+
                 # Collapse with processor
                 analyser = _PROCESSORS.get(processor, ia.MEAN)
                 try:
@@ -808,6 +834,9 @@ def extract_slice(
                     )]
 
                 # Record fixed coord info for the title
+                _MONTH_ABBR = ['', 'Jan','Feb','Mar','Apr','May','Jun',
+                               'Jul','Aug','Sep','Oct','Nov','Dec']
+                month_filter = spec.get("months") if isinstance(spec, dict) else None
                 if lo_idx == hi_idx:
                     raw_val = pts[lo_idx]
                     if _is_time_coord(coord):
@@ -825,9 +854,14 @@ def extract_slice(
                         "total": int(len(pts)),
                     })
                 else:
+                    month_suffix = ""
+                    if month_filter:
+                        month_suffix = " " + "".join(
+                            _MONTH_ABBR[m] for m in sorted(month_filter) if 1 <= m <= 12
+                        )
                     fixed_coords.append({
                         "name": coord_name,
-                        "value": f"{processor}[{lo_idx}:{hi_idx}]",
+                        "value": f"{processor}[{lo_idx}:{hi_idx}]{month_suffix}",
                         "units": str(coord.units),
                         "index": lo_idx,
                         "total": int(len(pts)),

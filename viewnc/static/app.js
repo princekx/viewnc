@@ -1085,6 +1085,7 @@ function buildDimSliders(cube) {
     // Number of index steps along this dimension
     const npts = hasValues ? coord.values.length : (coord.size || coord.shape?.[0] || 1);
     const maxIdx = npts - 1;
+    const isTime = !!coord.is_time;
 
     // Format an index → display string
     const fmtIdx = idx => {
@@ -1107,6 +1108,40 @@ function buildDimSliders(cube) {
 
     const procOptions = PROCESSORS.map(p =>
       `<option value="${p}"${p === 'mean' ? ' selected' : ''}>${p}</option>`).join('');
+
+    // ── Month-filter HTML (only rendered for time coordinates) ────────────────
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const SEASONS = {
+      'DJF': [12, 1, 2],
+      'MAM': [3, 4, 5],
+      'JJA': [6, 7, 8],
+      'SON': [9, 10, 11],
+      'All': null,
+    };
+    const monthFilterHtml = isTime ? `
+      <div class="month-filter-toggle hidden" id="mf-toggle-${coord.name}">
+        <button class="month-filter-btn" id="mf-btn-${coord.name}" onclick="toggleMonthFilter('${coord.name}')">
+          <span class="mf-icon">📅</span>
+          <span class="mf-label" id="mf-label-${coord.name}">Month filter</span>
+          <span class="mf-chevron" id="mf-chevron-${coord.name}">▾</span>
+        </button>
+        <div class="month-filter-panel hidden" id="mf-panel-${coord.name}">
+          <div class="mf-seasons">
+            ${Object.keys(SEASONS).map(s =>
+      `<button class="mf-season-btn" onclick="applyMonthSeason('${coord.name}','${s}')">${s}</button>`
+    ).join('')}
+          </div>
+          <div class="mf-months">
+            ${MONTH_NAMES.map((m, i) => `
+              <label class="mf-month-label">
+                <input type="checkbox" class="mf-month-cb" id="mf-m${i + 1}-${coord.name}"
+                       data-month="${i + 1}" data-coord="${coord.name}" />
+                ${m}
+              </label>`).join('')}
+          </div>
+        </div>
+      </div>
+    ` : '';
 
     const group = document.createElement('div');
     group.className = 'dim-slider-group';
@@ -1139,49 +1174,69 @@ function buildDimSliders(cube) {
       <div class="slider-extent">
         <span>${fmtIdx(0)}</span><span>${fmtIdx(maxIdx)}</span>
       </div>
+      ${monthFilterHtml}
     `;
     container.appendChild(group);
 
     const slo = $(`slo-${coord.name}`);
     const shi = $(`shi-${coord.name}`);
     const procSel = $(`proc-${coord.name}`);
+    const mfToggle = $(`mf-toggle-${coord.name}`);
+
+    // Helper: read active months from checkboxes (null = all months / no filter)
+    const getActiveMonths = () => {
+      if (!isTime) return null;
+      const checked = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coord.name}"]:checked`)]
+        .map(cb => parseInt(cb.dataset.month));
+      return checked.length > 0 && checked.length < 12 ? checked : null;
+    };
 
     function syncRange(movedLo) {
       let lo = parseInt(slo.value);
       let hi = parseInt(shi.value);
 
       if (movedLo) {
-        // Start slider moved: end always follows so the selection stays a
-        // single point.  The user can then drag the end slider rightward
-        // independently to widen the range.
         hi = lo;
         shi.value = hi;
       } else {
-        // End slider moved independently: only prevent it going below start.
-        if (hi < lo) {
-          hi = lo;
-          shi.value = hi;
-        }
+        if (hi < lo) { hi = lo; shi.value = hi; }
       }
 
       $(`rlo-${coord.name}`).textContent = fmtIdx(lo);
       $(`rhi-${coord.name}`).textContent = fmtIdx(hi);
       const n = hi - lo + 1;
       $(`rnpts-${coord.name}`).textContent = `(${n} pt${n > 1 ? 's' : ''})`;
+
+      const months = getActiveMonths();
       STATE.constraints[coord.name] = {
         range: [lo, hi],
         processor: procSel.value,
         value: idxToVal(lo),
+        ...(months ? { months } : {}),
       };
-      // Refresh the live selection summary in the Cube Dimensions panel
+
+      // Show/hide month-filter toggle: only meaningful when range > 1 and coord is time
+      if (mfToggle) {
+        mfToggle.classList.toggle('hidden', !isTime || n <= 1);
+      }
+
       updateSelectionSummary(cube);
-      // Keep the nav step badge in sync when sliders are dragged manually
       updateNavStepBadge();
     }
 
     slo.addEventListener('input', () => syncRange(true));
     shi.addEventListener('input', () => syncRange(false));
-    procSel.addEventListener('change', () => syncRange(true));
+    procSel.addEventListener('change', () => syncRange(false));
+
+    // Wire month-checkbox changes
+    if (isTime) {
+      group.querySelectorAll('.mf-month-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          syncRange(false);
+          _updateMonthFilterLabel(coord.name);
+        });
+      });
+    }
   });
 
   // Render initial summary with default selections
@@ -2973,4 +3028,68 @@ function restoreConstraints(constraints) {
       shi.dispatchEvent(new Event('input'));
     }
   }
+}
+
+// ── Month-filter helpers ──────────────────────────────────────────────────────
+
+const _SEASON_MONTHS = {
+  DJF: [12, 1, 2],
+  MAM: [3, 4, 5],
+  JJA: [6, 7, 8],
+  SON: [9, 10, 11],
+};
+
+/** Toggle the month-filter panel open/closed. */
+function toggleMonthFilter(coordName) {
+  const panel = $(`mf-panel-${coordName}`);
+  const chevron = $(`mf-chevron-${coordName}`);
+  if (!panel) return;
+  const isOpen = !panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', isOpen);
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+}
+
+/**
+ * Apply a season shortcut (DJF / MAM / JJA / SON) or clear all (All).
+ * Ticks the matching checkboxes and re-syncs the constraint.
+ */
+function applyMonthSeason(coordName, season) {
+  const months = _SEASON_MONTHS[season] || null;  // null = All
+  document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]`).forEach(cb => {
+    const m = parseInt(cb.dataset.month);
+    cb.checked = months ? months.includes(m) : false;
+  });
+  // Trigger syncRange via the slider's 'input' event on the hi slider
+  $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
+  _updateMonthFilterLabel(coordName);
+}
+
+/**
+ * Update the "Month filter" button label to show the active selection summary,
+ * e.g.  "DJF"  or  "Jan Mar Jun"  or  "Month filter" (when none selected).
+ */
+function _updateMonthFilterLabel(coordName) {
+  const label = $(`mf-label-${coordName}`);
+  if (!label) return;
+
+  const checked = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]:checked`)]
+    .map(cb => parseInt(cb.dataset.month));
+
+  if (checked.length === 0 || checked.length === 12) {
+    label.textContent = 'Month filter';
+    label.style.color = '';
+    return;
+  }
+
+  const ABBR = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Detect if the selection matches a named season
+  for (const [name, ms] of Object.entries(_SEASON_MONTHS)) {
+    if (ms.length === checked.length && ms.every(m => checked.includes(m))) {
+      label.textContent = name;
+      label.style.color = 'var(--accent, #2563eb)';
+      return;
+    }
+  }
+  label.textContent = checked.map(m => ABBR[m]).join(' ');
+  label.style.color = 'var(--accent, #2563eb)';
 }
