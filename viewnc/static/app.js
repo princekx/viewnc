@@ -332,6 +332,15 @@ $('filepath-input').addEventListener('keydown', e => { if (e.key === 'Enter') lo
 // /api/metadata returns it immediately.  We check on page load and populate
 // the UI without requiring the user to manually click "Load".
 document.addEventListener('DOMContentLoaded', async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const isPopout = urlParams.get('popout') === 'true';
+  if (isPopout) {
+    const filePanel = $('panel-file');
+    if (filePanel) filePanel.style.display = 'none';
+    const logoSub = document.querySelector('.logo-sub');
+    if (logoSub) logoSub.textContent = 'plot explorer';
+  }
+
   try {
     const data = await apiFetch('/api/metadata');
     if (data && data.cubes && data.cubes.length > 0) {
@@ -349,6 +358,49 @@ document.addEventListener('DOMContentLoaded', async () => {
       $('plot-btn').disabled = true;
       expandPanel('panel-vars');
       setStatus(`${data.cubes.length} cube(s) loaded`, 'ok');
+
+      // Initialize state from parent window if popped out
+      if (isPopout && window.opener && !window.opener.closed && window.opener.STATE) {
+        const pState = window.opener.STATE;
+        const pDoc = window.opener.document;
+
+        if (pState.selectedIdx !== null) {
+          // 1. Select the same variable
+          selectVar(pState.selectedIdx);
+
+          // 2. Restore constraints and sync the slider DOM elements
+          restoreConstraints(pState.constraints);
+
+          // 3. Copy plot settings/options
+          const copyVal = (id) => {
+            const pel = pDoc.getElementById(id);
+            const cel = $(id);
+            if (pel && cel) {
+              if (pel.type === 'checkbox') {
+                cel.checked = pel.checked;
+                cel.dispatchEvent(new Event('change'));
+              } else {
+                cel.value = pel.value;
+                cel.dispatchEvent(new Event('change'));
+              }
+            }
+          };
+
+          // Copy settings bar inputs
+          ['plot-type-select', 'symmetric-toggle', 'marginal-toggle', 
+           'coastline-res', 'coastline-color', 'contour-levels', 'contour-min', 
+           'contour-max', 'contour-filled', 'rb-x0', 'rb-x1', 'rb-y0', 'rb-y1'].forEach(copyVal);
+
+          // Copy colormap specifically
+          const cmap = pDoc.getElementById('colormap-select')?.value;
+          if (cmap) {
+            selectColormap(cmap);
+          }
+
+          // 4. Automatically trigger plot rendering in this window!
+          plotData();
+        }
+      }
     }
   } catch (_) {
     // No file pre-loaded – stay on welcome screen (expected without a CLI arg)
@@ -1718,6 +1770,8 @@ async function render2D(data, meta, plotType, colormap) {
   _gd.removeAllListeners?.('plotly_relayout');  // prevent double-binding
   _gd.on('plotly_relayout', syncRangeInputsFromPlotly);
 
+  // No-op (previously pop-out caching)
+
   // Fetch and show statistics non-blocking (only for 2D plot types)
   if (plotType === 'heatmap' || plotType === 'contour') {
     fetchAndRenderStats();
@@ -2337,6 +2391,9 @@ async function plotTimeSeries(idx) {
     await nextFrame();
     Plotly.relayout('plotly-div', { height: getPlotHeight() });
     Plotly.Plots.resize('plotly-div');
+
+    // No-op (previously pop-out caching)
+
     // Time series: hide stats bar (slice stats don't apply to spatial-mean plots)
     $('stats-bar').classList.add('hidden');
   } catch (err) {
@@ -2843,4 +2900,29 @@ function fmtSize(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1024 ** 3) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   return (bytes / 1024 ** 3).toFixed(2) + ' GB';
+}
+
+// ── Separate Plot Window (Pop-out) ───────────────────────────────────────────
+
+function popOutPlot() {
+  window.open('/?popout=true', '_blank', 'width=1200,height=800,resizable=yes,scrollbars=yes');
+}
+
+function restoreConstraints(constraints) {
+  if (!constraints) return;
+  STATE.constraints = JSON.parse(JSON.stringify(constraints));
+  for (const name in constraints) {
+    const c = constraints[name];
+    const slo = $(`slo-${name}`);
+    const shi = $(`shi-${name}`);
+    const procSel = $(`proc-${name}`);
+    if (slo && shi) {
+      if (procSel && c.processor) {
+        procSel.value = c.processor;
+      }
+      slo.value = c.range[0];
+      shi.value = c.range[1];
+      shi.dispatchEvent(new Event('input'));
+    }
+  }
 }
