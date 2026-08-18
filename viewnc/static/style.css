@@ -133,10 +133,11 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 10px;
+  padding: 12px 10px 40px 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scrollbar-width: thin;
 }
 
 .sidebar-footer {
@@ -193,7 +194,7 @@ body {
 .panel .panel-body {
   overflow: hidden;
   transition: max-height 0.25s ease, padding 0.25s ease;
-  max-height: 800px;
+  max-height: 4000px;
   /* large enough for any panel */
 }
 
@@ -201,6 +202,7 @@ body {
   max-height: 0 !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
+  overflow: hidden !important;
 }
 
 /* Remove bottom border from header when collapsed */
@@ -767,12 +769,42 @@ body {
 }
 
 /* ── Dim Sliders ── */
+#dim-sliders {
+  max-height: clamp(280px, calc(100vh - 360px), 480px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-bright, rgba(30, 40, 80, 0.2)) transparent;
+}
+
+#dim-sliders::-webkit-scrollbar {
+  width: 5px;
+}
+
+#dim-sliders::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#dim-sliders::-webkit-scrollbar-thumb {
+  background: var(--border-bright, rgba(30, 40, 80, 0.2));
+  border-radius: 4px;
+}
+
+#dim-sliders::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #94a3b8);
+}
+
 .dim-slider-group {
   background: var(--bg-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .dim-slider-header {
