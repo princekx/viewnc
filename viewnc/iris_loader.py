@@ -71,13 +71,24 @@ def _coord_summary(coord) -> dict:
         np.issubdtype(pts.dtype, np.floating) or np.issubdtype(pts.dtype, np.integer)
     ):
         # Convert numeric time values → human-readable date strings
-        info["min"] = float(np.nanmin(pts))
-        info["max"] = float(np.nanmax(pts))
-        info["size"] = int(pts.size)
+        info["min"]     = float(np.nanmin(pts))
+        info["max"]     = float(np.nanmax(pts))
+        info["size"]    = int(pts.size)
+        info["is_time"] = True   # always set – flag the frontend even if conversion fails
         try:
             dates = [_fmt_date(coord.units.num2date(v)) for v in pts.flatten()]
-            info["values"] = dates  # always include for time (used by sliders)
-            info["is_time"] = True
+            info["values"] = dates   # always include for time (used by sliders)
+            # Infer temporal resolution from the date strings
+            unique_years  = len({d[:4] for d in dates})
+            unique_months = len({d[:7] for d in dates if len(d) >= 7})
+            unique_days   = len(set(dates))
+            if unique_days > unique_months:
+                info["time_resolution"] = "daily"
+            elif unique_months > unique_years:
+                info["time_resolution"] = "monthly"
+            else:
+                info["time_resolution"] = "yearly"
+            info["unique_years"] = sorted({int(d[:4]) for d in dates if len(d) >= 4})
         except Exception as exc:
             logger.warning("Time conversion failed for %s: %s", coord.name(), exc)
             info["values"] = pts.flatten().tolist() if pts.size <= 100 else None
@@ -94,6 +105,7 @@ def _coord_summary(coord) -> dict:
         info["values"] = pts.flatten().astype(str).tolist()[:100]
         info["size"] = int(pts.size)
     return info
+
 
 
 def _cube_summary(cube, index: int) -> dict:
@@ -796,31 +808,38 @@ def extract_slice(
                 )
                 sub = sliced[idx_slices]
 
-                # ── Month filter (time coords only) ────────────────────────
-                # When the user picks specific months (e.g. DJF = [12,1,2]),
-                # keep only those time steps before aggregating.
-                month_filter = spec.get("months") if isinstance(spec, dict) else None
-                if month_filter and _is_time_coord(coord):
-                    try:
-                        sub_coord = sub.coord(coord_name)
-                        sub_pts   = sub_coord.points
-                        # Convert numeric time → cftime objects, extract .month
-                        dates      = sub_coord.units.num2date(sub_pts)
-                        keep_mask  = np.array([d.month in month_filter for d in dates])
-                        if keep_mask.any():
-                            # Build a dim-0-relative index list respecting ndim
-                            keep_indices = np.where(keep_mask)[0]
-                            sub_dim_idx  = sub.coord_dims(sub_coord)[0]
-                            sel_slices   = tuple(
-                                keep_indices if i == sub_dim_idx else slice(None)
-                                for i in range(sub.ndim)
+                # ── Temporal filter (years / months / days of month) ───────
+                # Applied before collapsing so only selected timesteps feed
+                # the statistical processor.  All three filters are optional
+                # and combined in a single pass for efficiency.
+                if isinstance(spec, dict) and _is_time_coord(coord):
+                    year_filter  = spec.get("years")   or None
+                    month_filter = spec.get("months")  or None
+                    day_filter   = spec.get("days")    or None
+                    if year_filter or month_filter or day_filter:
+                        try:
+                            sub_coord = sub.coord(coord_name)
+                            dates     = sub_coord.units.num2date(sub_coord.points)
+                            keep_mask = np.ones(len(dates), dtype=bool)
+                            if year_filter:
+                                keep_mask &= np.array([d.year  in year_filter  for d in dates])
+                            if month_filter:
+                                keep_mask &= np.array([d.month in month_filter for d in dates])
+                            if day_filter:
+                                keep_mask &= np.array([d.day   in day_filter   for d in dates])
+                            if keep_mask.any():
+                                keep_indices = np.where(keep_mask)[0]
+                                sub_dim_idx  = sub.coord_dims(sub_coord)[0]
+                                sel_slices   = tuple(
+                                    keep_indices if i == sub_dim_idx else slice(None)
+                                    for i in range(sub.ndim)
+                                )
+                                sub = sub[sel_slices]
+                        except Exception as tf_exc:
+                            logger.warning(
+                                "Temporal filter for %s failed: %s; using full range",
+                                coord_name, tf_exc,
                             )
-                            sub = sub[sel_slices]
-                    except Exception as mf_exc:
-                        logger.warning(
-                            "Month filter for %s failed: %s; using full range",
-                            coord_name, mf_exc,
-                        )
 
                 # Collapse with processor
                 analyser = _PROCESSORS.get(processor, ia.MEAN)
@@ -854,14 +873,25 @@ def extract_slice(
                         "total": int(len(pts)),
                     })
                 else:
-                    month_suffix = ""
+                    # Build a compact filter suffix for the title strip
+                    _MONTH_ABBR = ['','Jan','Feb','Mar','Apr','May','Jun',
+                                   'Jul','Aug','Sep','Oct','Nov','Dec']
+                    year_filter  = spec.get("years")  if isinstance(spec, dict) else None
+                    month_filter = spec.get("months") if isinstance(spec, dict) else None
+                    day_filter   = spec.get("days")   if isinstance(spec, dict) else None
+                    parts = []
+                    if year_filter:
+                        parts.append(",".join(str(y) for y in sorted(year_filter)))
                     if month_filter:
-                        month_suffix = " " + "".join(
+                        parts.append("".join(
                             _MONTH_ABBR[m] for m in sorted(month_filter) if 1 <= m <= 12
-                        )
+                        ))
+                    if day_filter:
+                        parts.append("d" + ",".join(str(d) for d in sorted(day_filter)))
+                    suffix = (" " + " ".join(parts)) if parts else ""
                     fixed_coords.append({
-                        "name": coord_name,
-                        "value": f"{processor}[{lo_idx}:{hi_idx}]{month_suffix}",
+                        "name":  coord_name,
+                        "value": f"{processor}[{lo_idx}:{hi_idx}]{suffix}",
                         "units": str(coord.units),
                         "index": lo_idx,
                         "total": int(len(pts)),

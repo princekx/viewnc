@@ -2319,53 +2319,107 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Month-filter panel ─────────────────────────────────────────────────────── */
+/* ── Temporal filter dropdowns (Years / Months / Days) ────────────────────── */
 
-.month-filter-toggle {
-  margin-top: 4px;
+.tf-dropdown-container {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.month-filter-btn {
+.tf-buttons-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tf-dropdown-btn-wrap {
+  flex: 1;
+  min-width: 95px;
+}
+
+.tf-dropdown-btn {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 5px;
   width: 100%;
-  background: none;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.75rem;
-  color: var(--text-muted, #64748b);
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border, rgba(30, 40, 80, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  padding: 4px 7px;
+  font-size: 0.73rem;
+  color: var(--text-secondary, #475569);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, border-color 0.15s;
+  transition: all var(--transition, 0.15s ease);
 }
 
-.month-filter-btn:hover {
-  background: var(--bg-hover, #f1f5f9);
+.tf-dropdown-btn:hover {
+  background: var(--bg-hover, #eef1f8);
   border-color: var(--accent, #2563eb);
 }
 
-.mf-icon {
-  font-size: 0.85rem;
+.tf-dropdown-btn.open {
+  border-color: var(--accent, #2563eb);
+  background: var(--bg-hover, #eef1f8);
 }
 
-.mf-label {
+.tf-dropdown-btn.has-filter {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.tf-btn-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.tf-btn-label {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
 }
 
-.mf-chevron {
-  font-size: 0.7rem;
+.tf-btn-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+
+.tf-dropdown-panel {
+  background: var(--bg-hover, #f8fafc);
+  border: 1px solid var(--border, rgba(30, 40, 80, 0.12));
+  border-radius: var(--radius-sm, 8px);
+  padding: 8px 10px;
+  margin-top: 2px;
+  box-shadow: var(--shadow, 0 2px 8px rgba(15, 23, 42, 0.06));
+}
+
+.tf-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.tf-panel-title {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--text-muted, #94a3b8);
 }
 
-.month-filter-panel {
-  margin-top: 4px;
-  background: var(--bg-card, #f8fafc);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 8px;
-  padding: 8px;
+.tf-all-toggle-btn {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
 }
 
 /* Season shortcut buttons */
@@ -2378,20 +2432,27 @@ body {
 
 .mf-season-btn {
   flex: 1;
-  min-width: 36px;
+  min-width: 32px;
   padding: 3px 6px;
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 5px;
-  background: var(--bg, #ffffff);
+  background: var(--bg-surface, #ffffff);
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-muted, #475569);
   cursor: pointer;
   text-align: center;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
 .mf-season-btn:hover {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-color: var(--accent, #2563eb);
+}
+
+.mf-season-btn.active,
+.tf-all-toggle-btn.active {
   background: var(--accent, #2563eb);
   color: #fff;
   border-color: var(--accent, #2563eb);
@@ -2423,4 +2484,91 @@ body {
   width: 12px;
   height: 12px;
   cursor: pointer;
+}
+
+/* Year pills (horizontal wrap) */
+.tf-year-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.tf-year-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--bg-surface, #fff);
+  font-size: 0.68rem;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.tf-year-pill:hover {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+}
+
+.tf-year-pill:has(.tf-year-cb:checked) {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tf-year-cb {
+  display: none;
+  /* pill click drives the checkbox */
+}
+
+/* Day-of-month grid (7 per row, compact) */
+.tf-day-pills {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.tf-day-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 4px;
+  background: var(--bg-surface, #fff);
+  font-size: 0.62rem;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.tf-day-pill:hover {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+}
+
+.tf-day-pill:has(.tf-day-cb:checked) {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #fff;
+}
+
+.tf-day-cb {
+  display: none;
+}
+
+.sel-filter-badge {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent, #2563eb);
 }

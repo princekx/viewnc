@@ -1036,10 +1036,32 @@ function updateSelectionSummary(cube) {
       ? '' // No processor shown for single-point
       : `<span class="sel-proc">${proc}</span>`;
 
+    let filterBadges = '';
+    if (spec.years && spec.years.length > 0) {
+      filterBadges += `<span class="sel-filter-badge" title="Filtered years: ${spec.years.join(', ')}">${spec.years.length} yr</span>`;
+    }
+    if (spec.months && spec.months.length > 0 && spec.months.length < 12) {
+      const ABBR = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      let label = `${spec.months.length} mo`;
+      if (typeof _SEASON_MONTHS !== 'undefined') {
+        for (const [sName, ms] of Object.entries(_SEASON_MONTHS)) {
+          if (ms.length === spec.months.length && ms.every(m => spec.months.includes(m))) {
+            label = sName;
+            break;
+          }
+        }
+      }
+      filterBadges += `<span class="sel-filter-badge" title="Filtered months">${label}</span>`;
+    }
+    if (spec.days && spec.days.length > 0 && spec.days.length < 31) {
+      filterBadges += `<span class="sel-filter-badge" title="Filtered days">${spec.days.length} d</span>`;
+    }
+
     html += `
       <div class="sel-row">
         <span class="sel-name">${coord.name}</span>
         <span class="sel-range">${rangePart}</span>
+        ${filterBadges}
         ${procBadge}
       </div>`;
   });
@@ -1109,39 +1131,129 @@ function buildDimSliders(cube) {
     const procOptions = PROCESSORS.map(p =>
       `<option value="${p}"${p === 'mean' ? ' selected' : ''}>${p}</option>`).join('');
 
-    // ── Month-filter HTML (only rendered for time coordinates) ────────────────
-    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const SEASONS = {
-      'DJF': [12, 1, 2],
-      'MAM': [3, 4, 5],
-      'JJA': [6, 7, 8],
-      'SON': [9, 10, 11],
-      'All': null,
-    };
-    const monthFilterHtml = isTime ? `
-      <div class="month-filter-toggle hidden" id="mf-toggle-${coord.name}">
-        <button class="month-filter-btn" id="mf-btn-${coord.name}" onclick="toggleMonthFilter('${coord.name}')">
-          <span class="mf-icon">📅</span>
-          <span class="mf-label" id="mf-label-${coord.name}">Month filter</span>
-          <span class="mf-chevron" id="mf-chevron-${coord.name}">▾</span>
-        </button>
-        <div class="month-filter-panel hidden" id="mf-panel-${coord.name}">
+    // ── Time-filter panel (years / months / days as separate dropdowns) ──────
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // Extract available years from unique_years or parsed date strings
+    const availYears = (coord.unique_years && coord.unique_years.length > 0)
+      ? coord.unique_years
+      : (Array.isArray(coord.values)
+          ? [...new Set(coord.values.map(d => String(d).slice(0, 4)).filter(y => /^\d{4}$/.test(y)).map(Number))].sort((a, b) => a - b)
+          : []);
+
+    const hasYears = availYears.length > 0;
+    const isDaily  = coord.time_resolution === 'daily';
+    const PENTADS  = [[1,5],[6,10],[11,15],[16,20],[21,25],[26,31]];
+
+    let timeFilterHtml = '';
+    if (isTime) {
+      const yearBtnHtml = hasYears ? `
+        <div class="tf-dropdown-btn-wrap">
+          <button type="button" class="tf-dropdown-btn" id="yf-btn-${coord.name}"
+                  onclick="toggleTimeDropdown('yf','${coord.name}')" title="Filter by Year">
+            <span class="tf-btn-icon">📅</span>
+            <span class="tf-btn-label" id="yf-label-${coord.name}">Years: All</span>
+            <span class="tf-btn-chevron" id="yf-chevron-${coord.name}">▾</span>
+          </button>
+        </div>` : '';
+
+      const monthBtnHtml = `
+        <div class="tf-dropdown-btn-wrap">
+          <button type="button" class="tf-dropdown-btn" id="mf-btn-${coord.name}"
+                  onclick="toggleTimeDropdown('mf','${coord.name}')" title="Filter by Month">
+            <span class="tf-btn-icon">🗓️</span>
+            <span class="tf-btn-label" id="mf-label-${coord.name}">Months: All</span>
+            <span class="tf-btn-chevron" id="mf-chevron-${coord.name}">▾</span>
+          </button>
+        </div>`;
+
+      const dayBtnHtml = isDaily ? `
+        <div class="tf-dropdown-btn-wrap">
+          <button type="button" class="tf-dropdown-btn" id="df-btn-${coord.name}"
+                  onclick="toggleTimeDropdown('df','${coord.name}')" title="Filter by Day">
+            <span class="tf-btn-icon">⏱️</span>
+            <span class="tf-btn-label" id="df-label-${coord.name}">Days: All</span>
+            <span class="tf-btn-chevron" id="df-chevron-${coord.name}">▾</span>
+          </button>
+        </div>` : '';
+
+      const yearPanelHtml = hasYears ? `
+        <div class="tf-dropdown-panel hidden" id="yf-panel-${coord.name}">
+          <div class="tf-panel-header">
+            <span class="tf-panel-title">Filter Years</span>
+            <button type="button" class="mf-season-btn tf-all-toggle-btn" id="yf-all-btn-${coord.name}"
+                    onclick="toggleAllYears('${coord.name}')">All</button>
+          </div>
+          <div class="tf-year-pills">
+            ${availYears.map(y => `
+              <label class="tf-year-pill">
+                <input type="checkbox" class="tf-year-cb" data-year="${y}" data-coord="${coord.name}" />
+                <span>${y}</span>
+              </label>`).join('')}
+          </div>
+        </div>` : '';
+
+      const monthPanelHtml = `
+        <div class="tf-dropdown-panel hidden" id="mf-panel-${coord.name}">
+          <div class="tf-panel-header">
+            <span class="tf-panel-title">Filter Months</span>
+          </div>
           <div class="mf-seasons">
-            ${Object.keys(SEASONS).map(s =>
-      `<button class="mf-season-btn" onclick="applyMonthSeason('${coord.name}','${s}')">${s}</button>`
-    ).join('')}
+            <button type="button" class="mf-season-btn tf-all-toggle-btn" id="mf-all-btn-${coord.name}"
+                    onclick="toggleAllMonths('${coord.name}')">All</button>
+            <button type="button" class="mf-season-btn" id="mf-season-DJF-${coord.name}"
+                    onclick="applyMonthSeason('${coord.name}','DJF')">DJF</button>
+            <button type="button" class="mf-season-btn" id="mf-season-MAM-${coord.name}"
+                    onclick="applyMonthSeason('${coord.name}','MAM')">MAM</button>
+            <button type="button" class="mf-season-btn" id="mf-season-JJA-${coord.name}"
+                    onclick="applyMonthSeason('${coord.name}','JJA')">JJA</button>
+            <button type="button" class="mf-season-btn" id="mf-season-SON-${coord.name}"
+                    onclick="applyMonthSeason('${coord.name}','SON')">SON</button>
           </div>
           <div class="mf-months">
             ${MONTH_NAMES.map((m, i) => `
               <label class="mf-month-label">
-                <input type="checkbox" class="mf-month-cb" id="mf-m${i + 1}-${coord.name}"
-                       data-month="${i + 1}" data-coord="${coord.name}" />
-                ${m}
+                <input type="checkbox" class="mf-month-cb" id="mf-m${i+1}-${coord.name}"
+                       data-month="${i+1}" data-coord="${coord.name}" />
+                <span>${m}</span>
               </label>`).join('')}
           </div>
+        </div>`;
+
+      const dayPanelHtml = isDaily ? `
+        <div class="tf-dropdown-panel hidden" id="df-panel-${coord.name}">
+          <div class="tf-panel-header">
+            <span class="tf-panel-title">Filter Days</span>
+          </div>
+          <div class="mf-seasons">
+            <button type="button" class="mf-season-btn tf-all-toggle-btn" id="df-all-btn-${coord.name}"
+                    onclick="toggleAllDays('${coord.name}')">All</button>
+            ${PENTADS.map(([a,b]) =>
+              `<button type="button" class="mf-season-btn" onclick="applyDayPentad('${coord.name}',${a},${b})">${a}–${b}</button>`
+            ).join('')}
+          </div>
+          <div class="tf-day-pills">
+            ${Array.from({length: 31}, (_,i) => i+1).map(d => `
+              <label class="tf-day-pill">
+                <input type="checkbox" class="tf-day-cb" data-day="${d}" data-coord="${coord.name}" />
+                <span>${d}</span>
+              </label>`).join('')}
+          </div>
+        </div>` : '';
+
+      timeFilterHtml = `
+        <div class="tf-dropdown-container">
+          <div class="tf-buttons-row">
+            ${yearBtnHtml}
+            ${monthBtnHtml}
+            ${dayBtnHtml}
+          </div>
+          ${yearPanelHtml}
+          ${monthPanelHtml}
+          ${dayPanelHtml}
         </div>
-      </div>
-    ` : '';
+      `;
+    }
 
     const group = document.createElement('div');
     group.className = 'dim-slider-group';
@@ -1174,21 +1286,32 @@ function buildDimSliders(cube) {
       <div class="slider-extent">
         <span>${fmtIdx(0)}</span><span>${fmtIdx(maxIdx)}</span>
       </div>
-      ${monthFilterHtml}
+      ${timeFilterHtml}
     `;
     container.appendChild(group);
 
     const slo = $(`slo-${coord.name}`);
     const shi = $(`shi-${coord.name}`);
     const procSel = $(`proc-${coord.name}`);
-    const mfToggle = $(`mf-toggle-${coord.name}`);
 
-    // Helper: read active months from checkboxes (null = all months / no filter)
+    // Helpers: read active temporal filters (null = no filter)
     const getActiveMonths = () => {
       if (!isTime) return null;
-      const checked = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coord.name}"]:checked`)]
+      const c = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coord.name}"]:checked`)]
         .map(cb => parseInt(cb.dataset.month));
-      return checked.length > 0 && checked.length < 12 ? checked : null;
+      return c.length > 0 && c.length < 12 ? c : null;
+    };
+    const getActiveYears = () => {
+      if (!isTime || availYears.length === 0) return null;
+      const c = [...document.querySelectorAll(`.tf-year-cb[data-coord="${coord.name}"]:checked`)]
+        .map(cb => parseInt(cb.dataset.year));
+      return c.length > 0 && c.length < availYears.length ? c : null;
+    };
+    const getActiveDays = () => {
+      if (!isTime || !isDaily) return null;
+      const c = [...document.querySelectorAll(`.tf-day-cb[data-coord="${coord.name}"]:checked`)]
+        .map(cb => parseInt(cb.dataset.day));
+      return c.length > 0 && c.length < 31 ? c : null;
     };
 
     function syncRange(movedLo) {
@@ -1208,17 +1331,16 @@ function buildDimSliders(cube) {
       $(`rnpts-${coord.name}`).textContent = `(${n} pt${n > 1 ? 's' : ''})`;
 
       const months = getActiveMonths();
+      const years  = getActiveYears();
+      const days   = getActiveDays();
       STATE.constraints[coord.name] = {
         range: [lo, hi],
         processor: procSel.value,
         value: idxToVal(lo),
         ...(months ? { months } : {}),
+        ...(years  ? { years  } : {}),
+        ...(days   ? { days   } : {}),
       };
-
-      // Show/hide month-filter toggle: only meaningful when range > 1 and coord is time
-      if (mfToggle) {
-        mfToggle.classList.toggle('hidden', !isTime || n <= 1);
-      }
 
       updateSelectionSummary(cube);
       updateNavStepBadge();
@@ -1228,12 +1350,24 @@ function buildDimSliders(cube) {
     shi.addEventListener('input', () => syncRange(false));
     procSel.addEventListener('change', () => syncRange(false));
 
-    // Wire month-checkbox changes
+    // Wire all temporal checkbox changes
     if (isTime) {
+      group.querySelectorAll('.tf-year-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          syncRange(false);
+          _updateYearFilterLabel(coord.name);
+        });
+      });
       group.querySelectorAll('.mf-month-cb').forEach(cb => {
         cb.addEventListener('change', () => {
           syncRange(false);
           _updateMonthFilterLabel(coord.name);
+        });
+      });
+      group.querySelectorAll('.tf-day-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          syncRange(false);
+          _updateDayFilterLabel(coord.name);
         });
       });
     }
@@ -3025,12 +3159,37 @@ function restoreConstraints(constraints) {
       }
       slo.value = c.range[0];
       shi.value = c.range[1];
+
+      // Restore active year checkboxes
+      if (Array.isArray(c.years)) {
+        document.querySelectorAll(`.tf-year-cb[data-coord="${name}"]`).forEach(cb => {
+          cb.checked = c.years.includes(parseInt(cb.dataset.year));
+        });
+        _updateYearFilterLabel(name);
+      }
+
+      // Restore active month checkboxes
+      if (Array.isArray(c.months)) {
+        document.querySelectorAll(`.mf-month-cb[data-coord="${name}"]`).forEach(cb => {
+          cb.checked = c.months.includes(parseInt(cb.dataset.month));
+        });
+        _updateMonthFilterLabel(name);
+      }
+
+      // Restore active day checkboxes
+      if (Array.isArray(c.days)) {
+        document.querySelectorAll(`.tf-day-cb[data-coord="${name}"]`).forEach(cb => {
+          cb.checked = c.days.includes(parseInt(cb.dataset.day));
+        });
+        _updateDayFilterLabel(name);
+      }
+
       shi.dispatchEvent(new Event('input'));
     }
   }
 }
 
-// ── Month-filter helpers ──────────────────────────────────────────────────────
+// ── Temporal-filter helpers ───────────────────────────────────────────────────
 
 const _SEASON_MONTHS = {
   DJF: [12, 1, 2],
@@ -3039,57 +3198,197 @@ const _SEASON_MONTHS = {
   SON: [9, 10, 11],
 };
 
-/** Toggle the month-filter panel open/closed. */
-function toggleMonthFilter(coordName) {
-  const panel = $(`mf-panel-${coordName}`);
-  const chevron = $(`mf-chevron-${coordName}`);
+/** Toggle a time dropdown panel open/closed (type: 'yf', 'mf', or 'df'). */
+function toggleTimeDropdown(type, coordName) {
+  const panel   = $(`${type}-panel-${coordName}`);
+  const btn     = $(`${type}-btn-${coordName}`);
+  const chevron = $(`${type}-chevron-${coordName}`);
   if (!panel) return;
-  const isOpen = !panel.classList.contains('hidden');
-  panel.classList.toggle('hidden', isOpen);
-  if (chevron) chevron.textContent = isOpen ? '▾' : '▴';
+  const isHidden = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !isHidden);
+  if (btn) btn.classList.toggle('open', isHidden);
+  if (chevron) chevron.textContent = isHidden ? '▴' : '▾';
+}
+
+/** Backward-compatibility alias */
+function toggleMonthFilter(coordName) {
+  toggleTimeDropdown('mf', coordName);
 }
 
 /**
- * Apply a season shortcut (DJF / MAM / JJA / SON) or clear all (All).
- * Ticks the matching checkboxes and re-syncs the constraint.
+ * Toggle select all / deselect all for years.
  */
-function applyMonthSeason(coordName, season) {
-  const months = _SEASON_MONTHS[season] || null;  // null = All
-  document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]`).forEach(cb => {
-    const m = parseInt(cb.dataset.month);
-    cb.checked = months ? months.includes(m) : false;
-  });
-  // Trigger syncRange via the slider's 'input' event on the hi slider
+function toggleAllYears(coordName) {
+  const cbs = [...document.querySelectorAll(`.tf-year-cb[data-coord="${coordName}"]`)];
+  if (cbs.length === 0) return;
+  const allChecked = cbs.every(cb => cb.checked);
+  cbs.forEach(cb => { cb.checked = !allChecked; });
+  $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
+  _updateYearFilterLabel(coordName);
+}
+
+/**
+ * Toggle select all / deselect all for months.
+ */
+function toggleAllMonths(coordName) {
+  const cbs = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]`)];
+  if (cbs.length === 0) return;
+  const allChecked = cbs.every(cb => cb.checked);
+  cbs.forEach(cb => { cb.checked = !allChecked; });
   $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
   _updateMonthFilterLabel(coordName);
 }
 
 /**
- * Update the "Month filter" button label to show the active selection summary,
- * e.g.  "DJF"  or  "Jan Mar Jun"  or  "Month filter" (when none selected).
+ * Toggle select all / deselect all for days.
+ */
+function toggleAllDays(coordName) {
+  const cbs = [...document.querySelectorAll(`.tf-day-cb[data-coord="${coordName}"]`)];
+  if (cbs.length === 0) return;
+  const allChecked = cbs.every(cb => cb.checked);
+  cbs.forEach(cb => { cb.checked = !allChecked; });
+  $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
+  _updateDayFilterLabel(coordName);
+}
+
+/**
+ * Apply a season shortcut (DJF/MAM/JJA/SON).
+ */
+function applyMonthSeason(coordName, season) {
+  const months = _SEASON_MONTHS[season] || [];
+  document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]`).forEach(cb => {
+    cb.checked = months.includes(parseInt(cb.dataset.month));
+  });
+  $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
+  _updateMonthFilterLabel(coordName);
+}
+
+/**
+ * Apply a day-of-month pentad shortcut.
+ */
+function applyDayPentad(coordName, a, b) {
+  document.querySelectorAll(`.tf-day-cb[data-coord="${coordName}"]`).forEach(cb => {
+    const d = parseInt(cb.dataset.day);
+    cb.checked = (a !== null && b !== null) ? (d >= a && d <= b) : false;
+  });
+  $(`shi-${coordName}`)?.dispatchEvent(new Event('input'));
+  _updateDayFilterLabel(coordName);
+}
+
+/**
+ * Update the Year filter button label to show active selection summary.
+ */
+function _updateYearFilterLabel(coordName) {
+  const btn    = $(`yf-btn-${coordName}`);
+  const label  = $(`yf-label-${coordName}`);
+  const allBtn = $(`yf-all-btn-${coordName}`);
+  if (!label) return;
+
+  const totalCbs = document.querySelectorAll(`.tf-year-cb[data-coord="${coordName}"]`).length;
+  const checked = [...document.querySelectorAll(`.tf-year-cb[data-coord="${coordName}"]:checked`)]
+    .map(cb => parseInt(cb.dataset.year)).sort((a, b) => a - b);
+
+  if (allBtn) {
+    allBtn.classList.toggle('active', totalCbs > 0 && checked.length === totalCbs);
+  }
+
+  if (checked.length === 0 || checked.length === totalCbs) {
+    label.textContent = 'Years: All';
+    if (btn) btn.classList.remove('has-filter');
+  } else if (checked.length === 1) {
+    label.textContent = `Year: ${checked[0]}`;
+    if (btn) btn.classList.add('has-filter');
+  } else if (checked.length <= 3) {
+    label.textContent = `Years: ${checked.join(',')}`;
+    if (btn) btn.classList.add('has-filter');
+  } else {
+    const isContig = checked.every((y, i) => i === 0 || y === checked[i - 1] + 1);
+    if (isContig) {
+      label.textContent = `Years: ${checked[0]}–${checked[checked.length - 1]}`;
+    } else {
+      label.textContent = `Years: ${checked.length}/${totalCbs}`;
+    }
+    if (btn) btn.classList.add('has-filter');
+  }
+}
+
+/**
+ * Update the Month filter button label to show active selection summary.
  */
 function _updateMonthFilterLabel(coordName) {
-  const label = $(`mf-label-${coordName}`);
+  const btn    = $(`mf-btn-${coordName}`);
+  const label  = $(`mf-label-${coordName}`);
+  const allBtn = $(`mf-all-btn-${coordName}`);
   if (!label) return;
 
   const checked = [...document.querySelectorAll(`.mf-month-cb[data-coord="${coordName}"]:checked`)]
     .map(cb => parseInt(cb.dataset.month));
 
+  if (allBtn) {
+    allBtn.classList.toggle('active', checked.length === 12);
+  }
+
+  for (const s of ['DJF', 'MAM', 'JJA', 'SON']) {
+    const sBtn = $(`mf-season-${s}-${coordName}`);
+    if (sBtn) {
+      const sMonths = _SEASON_MONTHS[s];
+      const matches = sMonths.length === checked.length && sMonths.every(m => checked.includes(m));
+      sBtn.classList.toggle('active', matches);
+    }
+  }
+
   if (checked.length === 0 || checked.length === 12) {
-    label.textContent = 'Month filter';
-    label.style.color = '';
+    label.textContent = 'Months: All';
+    if (btn) btn.classList.remove('has-filter');
     return;
   }
 
   const ABBR = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  // Detect if the selection matches a named season
   for (const [name, ms] of Object.entries(_SEASON_MONTHS)) {
     if (ms.length === checked.length && ms.every(m => checked.includes(m))) {
-      label.textContent = name;
-      label.style.color = 'var(--accent, #2563eb)';
+      label.textContent = `Months: ${name}`;
+      if (btn) btn.classList.add('has-filter');
       return;
     }
   }
-  label.textContent = checked.map(m => ABBR[m]).join(' ');
-  label.style.color = 'var(--accent, #2563eb)';
+
+  if (checked.length <= 3) {
+    const sorted = [...checked].sort((a, b) => a - b);
+    label.textContent = `Months: ${sorted.map(m => ABBR[m]).join(',')}`;
+  } else {
+    label.textContent = `Months: ${checked.length}/12`;
+  }
+  if (btn) btn.classList.add('has-filter');
+}
+
+/**
+ * Update the Day filter button label to show active selection summary.
+ */
+function _updateDayFilterLabel(coordName) {
+  const btn    = $(`df-btn-${coordName}`);
+  const label  = $(`df-label-${coordName}`);
+  const allBtn = $(`df-all-btn-${coordName}`);
+  if (!label) return;
+
+  const checked = [...document.querySelectorAll(`.tf-day-cb[data-coord="${coordName}"]:checked`)]
+    .map(cb => parseInt(cb.dataset.day)).sort((a, b) => a - b);
+
+  if (allBtn) {
+    allBtn.classList.toggle('active', checked.length === 31);
+  }
+
+  if (checked.length === 0 || checked.length === 31) {
+    label.textContent = 'Days: All';
+    if (btn) btn.classList.remove('has-filter');
+    return;
+  }
+
+  if (checked.length === 1) {
+    label.textContent = `Day: ${checked[0]}`;
+  } else if (checked.length <= 4) {
+    label.textContent = `Days: ${checked.join(',')}`;
+  } else {
+    label.textContent = `Days: ${checked.length}/31`;
+  }
+  if (btn) btn.classList.add('has-filter');
 }
