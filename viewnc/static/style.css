@@ -878,7 +878,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
-  /* rows get their own spacing via margins */
   padding: 2px 0;
 }
 
@@ -887,6 +886,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 5px;
 }
 
 .slider-row-label {
@@ -902,8 +902,8 @@ body {
 }
 
 .slider-lo-row {
-  margin-bottom: 6px;
-  /* gap between start and end rows */
+  margin-top: 5px;
+  margin-bottom: 8px;
 }
 
 .slider {
@@ -927,66 +927,71 @@ body {
 }
 
 /* ── Triangle thumbs ─────────────────────────────────────────────────────── */
-/* Start (lo): ▼ down-pointing triangle — sits above the track, tip points    */
-/*             down at the selected start position.                            */
+/* Start (lo / from): ▼ down-pointing triangle — sits just above the line      */
 .slider-lo::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 14px;
+  width: 11px;
+  height: 9px;
   border-radius: 0;
   background: var(--accent);
   border: none;
   clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
   cursor: ew-resize;
+  transform: translateY(-5px);
   transition: transform 0.12s, filter 0.12s;
-  filter: drop-shadow(0 2px 3px rgba(37, 99, 235, 0.45));
+  filter: drop-shadow(0 2px 2px rgba(37, 99, 235, 0.45));
 }
 
-/* End (hi): ▲ up-pointing triangle — rises from below, tip points up at end */
+/* End (hi / to): ▲ up-pointing triangle — sits just below the line           */
 .slider-hi::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px;
-  height: 14px;
+  width: 11px;
+  height: 9px;
   border-radius: 0;
   background: var(--accent2);
   border: none;
   clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
   cursor: ew-resize;
+  transform: translateY(5px);
   transition: transform 0.12s, filter 0.12s;
-  filter: drop-shadow(0 -2px 3px rgba(124, 92, 252, 0.45));
+  filter: drop-shadow(0 -2px 2px rgba(124, 92, 252, 0.45));
 }
 
 /* Firefox equivalents */
 .slider-lo::-moz-range-thumb {
-  width: 16px;
-  height: 14px;
+  width: 11px;
+  height: 9px;
   border-radius: 0;
   background: var(--accent);
   border: none;
   clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
   cursor: ew-resize;
+  transform: translateY(-5px);
+  transition: transform 0.12s;
 }
 
 .slider-hi::-moz-range-thumb {
-  width: 16px;
-  height: 14px;
+  width: 11px;
+  height: 9px;
   border-radius: 0;
   background: var(--accent2);
   border: none;
   clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
   cursor: ew-resize;
+  transform: translateY(5px);
+  transition: transform 0.12s;
 }
 
 .slider-lo::-webkit-slider-thumb:hover,
 .slider-lo::-webkit-slider-thumb:active {
-  transform: scale(1.2);
-  filter: drop-shadow(0 3px 5px rgba(37, 99, 235, 0.60));
+  transform: translateY(-5px) scale(1.25);
+  filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.60));
 }
 
 .slider-hi::-webkit-slider-thumb:hover,
 .slider-hi::-webkit-slider-thumb:active {
-  transform: scale(1.2);
-  filter: drop-shadow(0 -3px 5px rgba(124, 92, 252, 0.60));
+  transform: translateY(5px) scale(1.25);
+  filter: drop-shadow(0 -2px 4px rgba(124, 92, 252, 0.60));
 }
 
 .slider-extent {
